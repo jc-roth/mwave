@@ -1,0 +1,1 @@
+recursive-include dist/mwave/pyarmor_runtime_00xxxx *.so

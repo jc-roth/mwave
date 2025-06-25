@@ -1,0 +1,40 @@
+def args_lookup(x, y, v):
+    return (np.ones_like(x), )
+
+def bs(ni, nf, *args):
+    if ni == nf:
+        return (0.5+0j)*args[0]
+    else:
+        return (0+0.5j)*args[0]
+
+def calc_populations(x0, y0, v0, ncopies):
+    
+    # Compute the ones array
+    ones = np.ones(ncopies)
+
+    # Compute positions at each beamsplitter
+    {% for DeltaT in DeltaTs -%}
+        x{{loop.index}}, y{{loop.index}} = x{{loop.index-1}} + vx*{{DeltaT}}, y{{loop.index-1}} + vy*{{DeltaT}}
+    {% endfor %}
+    # Compute velocity at each beamsplitter
+    {% for DeltaT in DeltaTs -%}
+        v{{loop.index}} = v{{loop.index-1}}
+    {% endfor %}
+    # Compute arguments at each beamsplitter
+    {% for i in range(num_beamsplitters) -%}
+        args{{loop.index-1}} = args_lookup(x{{loop.index-1}}, y{{loop.index-1}}, v{{loop.index-1}})
+    {% endfor %}
+    # Compute wavefunctions
+    {% for wfc in wavefunc_calcs -%}
+        {{wfc}}
+    {% endfor %}
+    # Interfere
+    {% for port in ports -%}
+        port{{port}} = np.einsum('i,j->ij', port{{port}}_1, ones) + np.einsum('i,j->ij', port{{port}}_2, ones)
+    {% endfor %}
+    # Compute populations
+    {% for port in ports -%}
+        pop{{port}} = np.sum(np.abs(port{{port}})**2, axis=0)
+    {% endfor %}
+    # Return
+    return {% for port in ports -%}pop{{port}}{% if not loop.last %}, {% endif %}{%- endfor %}
