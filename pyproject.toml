@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mwave"
-version = "0.3.0"
+version = "1.0.0"
 description = "A package for simulating atom interferometers."
 authors = ["jc-roth <2797077+jc-roth@users.noreply.github.com>"]
 readme = "README.md"
@@ -10,7 +10,7 @@ packages = [{include = 'mwave', from ='src'}]
 # include = [{path = 'mwave-data', format = ['sdist', 'wheel']}]
 
 # Exclude incomplete modules
-exclude = ['src/mwave/interferometer.py', 'src/mwave/interpolation.py', 'src/mwave/integrate.py', 'src/mwave/templates/*']
+exclude = ['src/mwave/interpolation.py', 'src/mwave/xintegrate.py']
 
 [tool.poetry.dependencies]
 python = "^3.10"
