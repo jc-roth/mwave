@@ -23,11 +23,13 @@ An example
 
 *insert example*
 
-See the :ref:`geometries_example` section for more in-depth examples.
+See the :ref:`geometries_example` section for more in-depth examples of how to define and analyze interferometer geometries.
 
 Next we can use the :py:meth:`mwave.integrate.gbragg` function to integrate some initial momentum state through a Bragg diffraction beamsplitter
 
 *insert example*
+
+See the :ref:`integration_example` section for other examples of evolving wavefunctions under the Bloch Hamiltonian.
 
 Lets say that we want to study the systematics introduced by the Bragg diffraction process in our Mach-Zender geometry. To do this we need to combine the numerical computation we've made using :py:meth:`mwave.integrate.gbragg` with our symbolic representation of the interferometer geometry. This is accomplished in a straightforward way by defining a custom :py:class:`mwave.symbolic.Unitary` class.
 
