@@ -761,6 +761,7 @@ class Unitary(ABC):
         pass
 
     def gen_numeric(self, node, args, subs):
+        """Function that child classes of :py:class:`mwave.symbolic.Unitary` can override in order to include numerically calculated corrections in phase calculations. See the example :ref:`numercal_evaluation_sci` for more information on how to use this function."""
         raise NotImplementedError('apply_numeric is not implemented.')
 
     def __matmul__(self, obj):
@@ -923,7 +924,7 @@ class Mirror(Unitary):
 
         self._n1 = n1
         self._n2 = n2
-        self._delta = delta
+        self.delta = delta
         self._k = k
         self._v_recoil = constants.hbar*k/constants.m
 
@@ -937,7 +938,7 @@ class Mirror(Unitary):
             # Update momentum, velocity, and phase of diffracted node
             s2.n = self._n2
             s2.v += (self._n2 - self._n1)*self._v_recoil
-            s2.set_phase_diff((self._n2 - self._n1)*(self._k*node.z - self._delta*node.t))
+            s2.set_phase_diff((self._n2 - self._n1)*(self._k*node.z - self.delta*node.t))
         elif node.n == self._n2:
             # Resonant with n2, create two child nodes
             s2 = InterferometerNode(parent_node=node, unitary=self)
@@ -945,7 +946,7 @@ class Mirror(Unitary):
             # Update momentum, velocity, and phase of diffracted node
             s2.n = self._n1
             s2.v += (self._n1 - self._n2)*self._v_recoil
-            s2.set_phase_diff((self._n1 - self._n2)*(self._k*node.z - self._delta*node.t))
+            s2.set_phase_diff((self._n1 - self._n2)*(self._k*node.z - self.delta*node.t))
         else:
             # Not resonant, create child node which is identical to parent node
             s1 = InterferometerNode(parent_node=node, unitary=self)
