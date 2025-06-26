@@ -1,17 +1,14 @@
-##################
 Symbolic Reference
 ##################
 
-********************
 Interferometer class
-********************
+====================
 
 .. autoclass:: mwave.symbolic.Interferometer
    :members:
 
-*****************
 Unitary operators
-*****************
+=================
 
 .. autoclass:: mwave.symbolic.Unitary
    :members:
@@ -25,9 +22,8 @@ Unitary operators
 .. autoclass:: mwave.symbolic.Mirror
    :members:
 
-*****
 Nodes
-*****
+=====
 
 .. autoclass:: mwave.symbolic.TreeNode
    :members:
@@ -35,9 +31,8 @@ Nodes
 .. autoclass:: mwave.symbolic.InterferometerNode
    :members:
 
-****************
 Helper functions
-****************
+================
 
 .. autofunction:: mwave.symbolic.set_constants
 
