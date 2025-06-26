@@ -7,7 +7,7 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = 'mwave'
-copyright = '2024, J Roth'
+copyright = '2025, J Roth'
 author = 'J Roth'
 
 # -- General configuration ---------------------------------------------------
@@ -29,12 +29,12 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 #import sys
 #sys.path.append('../src/mwave')
 
-# Copy the examples folder into docs/code_examples
-import shutil
-import os
-if os.path.exists('code_examples'):
-    shutil.rmtree('code_examples')
-shutil.copytree("../examples", "code_examples", ignore=shutil.ignore_patterns('*.py', '*.ipynb_checkpoints'))
+# # Copy the examples folder into docs/code_examples
+# import shutil
+# import os
+# if os.path.exists('code_examples'):
+#     shutil.rmtree('code_examples')
+# shutil.copytree("../examples", "code_examples", ignore=shutil.ignore_patterns('*.py', '*.ipynb_checkpoints'))
 
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
