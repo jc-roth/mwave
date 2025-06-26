@@ -154,30 +154,32 @@ Combining the interferometer model with simulation
 
 Lets say that we want to study the systematics introduced by the Bragg diffraction process in our Mach-Zender geometry. To do this we need to combine the numerical computation we've made using :py:meth:`mwave.integrate.gbragg` with our symbolic representation of the interferometer geometry. This is accomplished in a straightforward way by defining custom :py:class:`mwave.symbolic.Unitary` classes that inherit from the :py:class:`mwave.symbolic.Beamsplitter` and :py:class:`mwave.symbolic.Mirror` classes.
 
+Our beamsplitters will couple momentum states :math:`0` and :math:`n`
+
 .. code:: ipython3
 
     class BraggBeamsplitter(msym.Beamsplitter):
     
         def gen_numeric(self, node, subs={}):
             delta = msym.eval_sympy_var(self.delta, subs)
-            n_init = msym.eval_sympy_var(node.parent.n, subs)
-            n_final = msym.eval_sympy_var(node.n, subs)
-            kvec, n0_idx, nf_idx = mint.make_kvec(n_init, n_final)
+            kvec, _, _ = mint.make_kvec(msym.eval_sympy_var(self.n1, subs), msym.eval_sympy_var(self.n2, subs))
+            n_idx = np.argmin(np.abs(2*msym.eval_sympy_var(node.n,subs) - kvec))
+            n_parent = msym.eval_sympy_var(node.parent.n,subs)
             def fnc(v):
-                sol = mint.gbragg(kvec, mint.make_phi(kvec, n_init), 2*3*sigma, delta + 4*v, omega_bs, sigma)
-                return sol.y[nf_idx,-1]
+                sol = mint.gbragg(kvec, mint.make_phi(kvec, n_parent), 2*3*sigma, delta + 4*v, omega_bs, sigma)
+                return sol.y[n_idx,-1]
             return fnc
     
     class BraggMirror(msym.Mirror):
     
         def gen_numeric(self, node, subs={}):
             delta = msym.eval_sympy_var(self.delta, subs)
-            n_init = msym.eval_sympy_var(node.parent.n, subs)
-            n_final = msym.eval_sympy_var(node.n, subs)
-            kvec, n0_idx, nf_idx = mint.make_kvec(n_init, n_final)
+            kvec, _, _ = mint.make_kvec(msym.eval_sympy_var(self._n1, subs), msym.eval_sympy_var(self._n2, subs))
+            n_idx = np.argmin(np.abs(2*msym.eval_sympy_var(node.n,subs) - kvec))
+            n_parent = msym.eval_sympy_var(node.parent.n,subs)
             def fnc(v):
-                sol = mint.gbragg(kvec, mint.make_phi(kvec, n_init), 2*3*sigma, delta + 4*v, omega_mirror, sigma)
-                return sol.y[nf_idx,-1]
+                sol = mint.gbragg(kvec, mint.make_phi(kvec, n_parent), 2*3*sigma, delta + 4*v, omega_mirror, sigma)
+                return sol.y[n_idx,-1]
             return fnc
 
 Now we can define new unitary operators using these definitions and
@@ -188,7 +190,7 @@ apply them to an interferometer.
     bragg_beamsplitter = BraggBeamsplitter(0, n, delta, k_eff)
     bragg_mirror = BraggMirror(0, n, delta, k_eff)
     
-    ifr_num = msym.Interferometer(init_node=msym.InterferometerNode(n=n, v=2*hbar*k*n/m))
+    ifr_num = msym.Interferometer()
     ifr_num.apply(bragg_beamsplitter)
     ifr_num.apply(free)
     ifr_num.apply(bragg_mirror)
@@ -219,13 +221,11 @@ set our symbolic variables to numeric values.
     l1 = port_dict['lower'][0].gen_numeric_wf_func(subs)
     l2 = port_dict['lower'][1].gen_numeric_wf_func(subs)
     
-    # Create a function to compute the differential phase
-    def calc_pops(v):
+    # Create a function to compute the phase between the output wavefunctions
+    def calc_phase(v):
+        uphase, lphase = np.angle(u1(v)/u2(v)), np.angle(l1(v)/l2(v))
     
-        wf_upper, wf_lower = u1(v) + u2(v), l1(v) + l2(v)
-        pop_upper, pop_lower = np.abs(wf_upper)**2, np.abs(wf_lower)**2
-    
-        return pop_upper, pop_lower
+        return uphase, lphase
 
 Note that these numerically calculated complex amplitudes do not include
 any of the analytically derived phases.
@@ -235,22 +235,32 @@ of the input particle velocity
 
 .. code:: ipython3
 
-    vs = np.linspace(-1, 1, 50)
+    vs = np.linspace(-0.5, 0.5, 50)
     upper = np.full_like(vs, np.nan)
     lower = np.full_like(vs, np.nan)
     
     for i in range(len(vs)):
-        upper[i], lower[i] = calc_pops(vs[i])
+        upper[i], lower[i] = calc_phase(vs[i])
     
-    plt.plot(vs, upper)
-    plt.plot(vs, lower)
-    plt.xlabel('initial velocity')
-    plt.ylabel('population')
+    fig, [ax1, ax2] = plt.subplots(nrows=2, sharex=True)
+    ax1.plot(vs, upper)
+    ax2.plot(vs, lower)
+    ax2.set_xlabel('initial velocity')
+    ax1.set_ylabel('upper interferometer phase [rad]')
+    ax2.set_ylabel('lower interferometer phase [rad]')
     plt.show()
 
 
 
 .. image:: static/output_26_0.png
+
+The paths that interfere in the upper output port of the interferometer
+do not experience the same set of beamsplitter/mirror pulses, and so
+they experience a phase dependent on the input velocity. The paths that
+interfere in the lower output port of the interferometer experience the
+same set of beamsplitters, and mirrors that are equivalent via a frame
+transformation. Therefore the imperfect phase imprinted by the Bragg
+process cancels out in this output port.
 
 See the :ref:`numercal_evaluation_sci` section for a more detailed example of how to implement the :py:meth:`mwave.symbolic.Unitary.gen_numeric` function.
 
