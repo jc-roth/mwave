@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "mwave"
-version = "1.0.0"
+version = "1.0.1"
 description = "A package for simulating atom interferometers."
 authors = ["jc-roth <2797077+jc-roth@users.noreply.github.com>"]
 readme = "README.md"
