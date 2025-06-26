@@ -6,5 +6,7 @@ Examples
    :caption: Contents:
    :glob:
 
-   examples/*
-   code_examples/*
+   examples/geometries
+   examples/bloch_ham_integration
+   examples/systematic_studies
+   examples/single_bragg_matching

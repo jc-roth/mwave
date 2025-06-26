@@ -113,9 +113,9 @@ difference between each interfering output:
     2*T**2*g*k*n - pi
     2*T**2*g*k*n
 
-See the Geometries_ section for more in-depth examples of how to define and analyze interferometer geometries.
+See the `Interferometer Geometries`_ section for more in-depth examples of how to define and analyze interferometer geometries.
 
-.. _Geometries: examples/geometries.ipynb
+.. _`Interferometer Geometries`: examples/geometries.ipynb
 
 Simulating Bragg beamsplitters
 ------------------------------
@@ -149,9 +149,9 @@ Next we can use the :py:meth:`mwave.integrate.gbragg` function to integrate some
 
 That seems to have worked well enough!
 
-See the integration_ section for other examples of evolving wavefunctions under the Bloch Hamiltonian.
+See the `Integrating the Bloch Hamiltonian`_ section for other examples of evolving wavefunctions under the Bloch Hamiltonian.
 
-.. _integration: examples/bloch_ham_integration.ipynb
+.. _`Integrating the Bloch Hamiltonian`: examples/bloch_ham_integration.ipynb
 
 Combining the interferometer model with simulation
 --------------------------------------------------

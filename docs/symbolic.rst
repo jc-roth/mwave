@@ -1,6 +1,10 @@
 Symbolic Reference
 ##################
 
+See the `Interferometer Geometries`_ section for examples of how to use the :py:mod:`mwave.symbolic` module.
+
+.. _`Interferometer Geometries`: examples/geometries.ipynb
+
 Interferometer class
 ====================
 
