@@ -26,7 +26,7 @@ def bloch_rhs(t, phi, kvec, delta, omega, omega_args, phase, phase_args, transfo
 
         \\text{returned vector}=-ik^2\\lvert k\\rangle\\langle k\\rvert\\phi\\rangle + i\\frac{\\Omega(t, a)}{2}\\left[e^{i(\\delta t+\\theta(t,b))}\\lvert k\\rangle\\langle k + 2\\rvert + e^{-i(\\delta t+\\theta(t,b))}\\lvert k\\rangle\\langle k-2\\rvert\\right]\\rvert\\phi\\rangle
     
-    To solve the Bloch Hamiltonian in time the :code:`bloch_rhs` function can be integrated using :meth:`scipy.integrate.solve_ivp`.
+    To solve the Bloch Hamiltonian in time the :py:meth:`mwave.integrate.bloch_rhs` function can be integrated using :py:meth:`scipy.integrate.solve_ivp`.
     
     :param t: The time at which to evaluate the right hand side.
     :param phi: The value of phi at which to evaluate the right hand side.
@@ -70,7 +70,7 @@ def bloch_density_rhs(t, rho, nstates, hkvec, vkvec, loss_mat, delta, omega, ome
     
     The parameter :code:`loss_mat` is the loss matrix.
     
-    The remaining parameters (:code:`delta`, :code:`omega`, :code:`omega_args`, :code:`phase`, :code:`phase_args`) are equivalent to those used in the :code:`bloch_rhs` function.
+    The remaining parameters (:code:`delta`, :code:`omega`, :code:`omega_args`, :code:`phase`, :code:`phase_args`) are equivalent to those used in the :py:meth:`mwave.integrate.bloch_rhs` function.
     
     :param t: The time at which to evaluate the right hand side.
     :param rho: The value of rho at which to evaluate the right hand side.
@@ -140,7 +140,7 @@ def bloch_rhs_gaussian(t, phi, kvec, delta, omega, sigma, t0):
     
     where :math:`\\Omega` is given by :code:`omega`, :math:`\\sigma` is given by :code:`sigma`, and :math:`t_0` is given by :code:`t0`.
     
-    The :code:`bloch_rhs_gaussian` function can be integrated in time using :meth:`scipy.integrate.solve_ivp`.
+    The :py:meth:`mwave.integrate.bloch_rhs_gaussian` function can be integrated in time using :meth:`scipy.integrate.solve_ivp`.
     
     :param t: The time at which to evaluate the right hand side.
     :param phi: The value of phi at which to evaluate the right hand side.
@@ -183,7 +183,7 @@ def bloch_rhs_multifreq_gaussian(t, phi, kvec, delta, omega, sigma, t0, omega_mo
     
     where :math:`\\Omega` is given by :code:`omega`, :math:`\\sigma` is given by :code:`sigma`, :math:`t_0` is given by :code:`t0`, and :math:`\\omega_\\text{mod}` is given by :code:`omega_mod`.
     
-    The :code:`bloch_rhs_multifreq_gaussian` function can be integrated in time using :meth:`scipy.integrate.solve_ivp`.
+    The :py:meth:`mwave.integrate.bloch_rhs_multifreq_gaussian` function can be integrated in time using :py:meth:`scipy.integrate.solve_ivp`.
     
     :param t: The time at which to evaluate the right hand side.
     :param phi: The value of phi at which to evaluate the right hand side.
@@ -253,7 +253,7 @@ def phase_fnc_constant(t, args):
 def opt_states(optfnc, arg_guess, n0_idx, nf_idx, pi2_weight=1, pi_weight=0, nontarget_weight=0):
     """DEPRECATED
     
-    Optimizes a pulse for a particular set of final states. :code:`optfunc` should return an array of amplitudes. The amplitudes at :code:`n0_idx` and :code:`nf_idx` are specified to be the original and target states. Different combinations of the final arguments optimize for different ratios of these two states.
+    Optimizes a pulse for a particular set of final states. :py:meth:`mwave.integrate.optfunc` should return an array of amplitudes. The amplitudes at :code:`n0_idx` and :code:`nf_idx` are specified to be the original and target states. Different combinations of the final arguments optimize for different ratios of these two states.
     
     >>> from mwave.integrate import gbragg, make_kvec, make_phi, opt_states, pops_vs_time
     >>> n0, nf = 0, 5
@@ -395,7 +395,7 @@ def pops_vs_time(kvec, t, phi, ax=None, legend=False):
         return ax
 
 def gbragg(kvec, phi0, tfinal, delta, omega, sigma, omega_mod=None, method='DOP853', atol=1e-10, rtol=1e-10, dense=False, max_step=0.1):
-    """Performs Bragg diffraction with a Gaussian profile and a constant phase. This function internally uses :meth:`mwave.integrate.bloch_rhs_gaussian` if :code:`omega_mod=None` and :meth:`mwave.integrate.bragg_rhs_multifreq_gaussian` if :code:`omega_mod` is not :code:`None`. The Gaussian center is automatically placed at :code:`tfinal/2`.
+    """Performs Bragg diffraction with a Gaussian profile and a constant phase. This function internally uses :py:meth:`mwave.integrate.bloch_rhs_gaussian` if :code:`omega_mod=None` and :meth:`mwave.integrate.bloch_rhs_multifreq_gaussian` if :code:`omega_mod` is not :code:`None`. The Gaussian center is automatically placed at :code:`tfinal/2`.
     
     :param kvec: The vector of momentum states to simulate.
     :param phi0: The initial value of phi.
@@ -404,12 +404,12 @@ def gbragg(kvec, phi0, tfinal, delta, omega, sigma, omega_mod=None, method='DOP8
     :param omega: The peak effective Rabi frequency.
     :param sigma: The Gaussian width of the Rabi frequency in time.
     :param omega_mod: The modulation frequency.
-    :param method: The integration method to call :code:`scipy.integrate.solve_ivp` with. Defaults to :code:`'DOP853'`.
-    :param atol: The absolute tolerance given to :code:`scipy.integrate.solve_ivp`.
-    :param atol: The relative tolerance given to :code:`scipy.integrate.solve_ivp`.
+    :param method: The integration method to call :py:meth:`scipy.integrate.solve_ivp` with. Defaults to :code:`'DOP853'`.
+    :param atol: The absolute tolerance given to :py:meth:`scipy.integrate.solve_ivp`.
+    :param atol: The relative tolerance given to :py:meth:`scipy.integrate.solve_ivp`.
     :param dense: If true dense output is returned (i.e. the integration result can be queried for any intermediate time).
     :param max_step: The max step size to use during the integration.
-    :returns: The solution object output from :code:`scipy.integrate.solve_ivp`.
+    :returns: The solution object output from :py:meth:`scipy.integrate.solve_ivp`.
      
     >>> from mwave.integrate import make_kvec, make_phi, gbragg, pops_vs_time
     >>> n0, nf = 0, 5
@@ -452,7 +452,7 @@ def gbragg(kvec, phi0, tfinal, delta, omega, sigma, omega_mod=None, method='DOP8
         return solve_ivp(lambda *x: bloch_rhs_multifreq_gaussian(x[0], x[1], kvec, delta, omega, sigma, t0, omega_mod), [0, tfinal], phi0, method=method, atol=atol, rtol=rtol, dense_output=dense, max_step=max_step)
 
 def bloch(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, t0=0, method='DOP853', atol=1e-10, rtol=1e-10, dense=False, max_step=0.1, transformed = False, Gamma_sps = None):
-    """Evolves the provided wavefunction under the Bloch Hamiltonian. This function internally uses :meth:`mwave.integrate.bloch_rhs` if :code:`Gamma_sps=None` and :meth:`mwave.integrate.bloch_density_rhs` if :code:`Gamma_sps` is not :code:`None`. 
+    """Evolves the provided wavefunction under the Bloch Hamiltonian. This function internally uses :py:meth:`mwave.integrate.bloch_rhs` if :code:`Gamma_sps=None` and :meth:`mwave.integrate.bloch_density_rhs` if :code:`Gamma_sps` is not :code:`None`. 
     
     :param kvec: The vector of momentum states to simulate.
     :param phi0: The initial value of phi.
@@ -468,9 +468,9 @@ def bloch(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, t0=0,
     :param atol: The relative tolerance given to :code:`scipy.integrate.solve_ivp`.
     :param dense: If true dense output is returned (i.e. the integration result can be queried for any intermediate time).
     :param max_step: The max step size to use during the integration.
-    :param transformed: See the description of :code:`bloch_rhs` for details.
-    :param Gamma_sps: The rate of single photon scattering. Single photon scattering is only applied if this parameter is provided. When provided the :code:`bragg` function converts the provided wavefunction into a density matrix and then evolves the density matrix under the Bragg Hamiltonian with decoherence included. As such the returned solution contains the density matrix instead of a wavefunction.
-    :returns: The solution object output from :code:`scipy.integrate.solve_ivp`."""
+    :param transformed: See the description of :py:meth:`mwave.integrate.bloch_rhs` for details.
+    :param Gamma_sps: The rate of single photon scattering. Single photon scattering is only applied if this parameter is provided. When provided the :py:meth:`mwave.integrate.bragg` function converts the provided wavefunction into a density matrix and then evolves the density matrix under the Bragg Hamiltonian with decoherence included. As such the returned solution contains the density matrix instead of a wavefunction.
+    :returns: The solution object output from :py:meth:`scipy.integrate.solve_ivp`."""
     
     # Check that if Gamma_sps is passed that transformed is false, as these are incompatible arguments
     if transformed and Gamma_sps is not None:
