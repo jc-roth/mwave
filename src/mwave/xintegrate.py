@@ -15,6 +15,24 @@ def pspace_to_xspace(vec):
 def xspace_to_pspace(vec):
     return np.fft.fft(np.fft.ifftshift(vec))
 
+def make_continuous_kvec(n_min, n_max, S):
+    nvec = np.arange(n_min, n_max+1)
+    svec = np.arange(-S, S)
+    
+    kvec = np.full(len(nvec)*len(svec), np.nan)
+    idx = 0
+    for i in range(len(nvec)):
+        for j in range(len(svec)):
+            kvec[idx] = 2*nvec[i] + svec[j]/S
+            idx+=1
+
+    return kvec, nvec, svec
+
+def make_continuous_phi(kvec, n0, sig):
+    phi0 = np.exp(-(kvec-2*n0)**2/(2*sig**2))/np.sqrt(sig*np.sqrt(np.pi))
+    phi0 = phi0.astype(np.complex128)
+    return phi0
+
 # Define split step integrator
 def splitstep(x, tfinal, dt, Vfnc, psi0, klaser, store_hist = True, progress=True):
 
