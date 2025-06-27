@@ -6,15 +6,13 @@ Quickstart
 Installation
 ============
 
-Stable releases of :code:`mwave` can be downloaded from `Github`_.
+Stable releases of :code:`mwave` can be downloaded from `Github`_ or via:
 
 .. _Github: https://github.com/jc-roth/mwave/releases
 
-The latest version of :code:`mwave` can be installed directly from Github via
-
 .. code-block::
 
-   pip install git+https://github.com/jc-roth/mwave.git
+   pip install git+https://github.com/jc-roth/mwave@v1.0.2
 
 A first example
 ===============
