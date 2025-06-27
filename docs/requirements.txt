@@ -1,4 +1,5 @@
 nbsphinx==0.9.6 ; python_version >= "3.10" and python_version < "4.0"
 sphinx-rtd-theme==3.0.2 ; python_version >= "3.10" and python_version < "4.0"
 sphinx==8.1.3 ; python_version >= "3.10" and python_version < "4.0"
+ipython ; python_version >= "3.10" and python_version < "4.0"
 mwave @ git+https://github.com/jc-roth/mwave@main
