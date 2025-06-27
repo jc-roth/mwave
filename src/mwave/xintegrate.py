@@ -79,8 +79,8 @@ def prop_cn(xvec, tfinal, dt, Vvec, psi0):
         H_diag1 = (Vvec(tvec[i-1])+H_diag_ke).astype(np.complex128)
         H_diag2 = (Vvec(tvec[i])+H_diag_ke).astype(np.complex128)
         
-        _trimatmul(-0.5j*H_od*dt, 1-0.5j*H_diag1*dt, np.copy(-0.5j*H_od*dt), psi1, psi2)
-        _trimatdiv(0.5j*H_od*dt, 1+0.5j*H_diag2*dt, np.copy(0.5j*H_od*dt), psi2, psi1)
+        _trimatmul(0.5j*H_od*dt, 1-0.5j*H_diag1*dt, np.copy(0.5j*H_od*dt), psi1, psi2)
+        _trimatdiv(-0.5j*H_od*dt, 1+0.5j*H_diag2*dt, np.copy(-0.5j*H_od*dt), psi2, psi1)
 
     return psi1
     
