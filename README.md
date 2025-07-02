@@ -1,3 +1,7 @@
+## Documentation
+
+On readthedocs [here](mwave.readthedocs.io).
+
 ## Building the package
 
 ### Building in development mode
