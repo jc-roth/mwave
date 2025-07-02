@@ -1,6 +1,6 @@
 ## Documentation
 
-On readthedocs [here](mwave.readthedocs.io).
+On readthedocs [here](https://mwave.readthedocs.io).
 
 ## Building the package
 
