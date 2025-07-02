@@ -36,5 +36,15 @@ def calc_populations(x0, y0, v0, ncopies):
     {% for port in ports -%}
         pop{{port}} = np.sum(np.abs(port{{port}})**2, axis=0)
     {% endfor %}
+    # Compute junk populations
+    {% if junk_wavefunc_calcs -%}
+    {% for junk_wavefunc_calc in junk_wavefunc_calcs -%}
+        {{junk_wavefunc_calc}}
+    {% endfor %}
+    {% for junk_pop in junk_pops -%}
+        {{junk_pop}}
+    {% endfor %}
+    {% else %}
+    {% endif %}
     # Return
     return {% for port in ports -%}pop{{port}}{% if not loop.last %}, {% endif %}{%- endfor %}

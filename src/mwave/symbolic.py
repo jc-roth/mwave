@@ -624,10 +624,11 @@ class Interferometer():
         # Return
         return iports, jports, no_port
     
-    def generate_code_outline(self, iports):
+    def generate_code_outline(self, iports, jports=None):
         """This function generates an outline of python code that can be used to compute the population at all of the output ports of an arbitrary interferometer geometry. The code will not be immediately ready to run. The user must adapt the automatically generated functions for their own use.
         
         :param iports: A dictionary of interfering port populations to generate a numerical computation for.
+        :param jports: A dictionary of junk port populations to generate a numerical computation for. Optional.
         :returns: The code as a string.
         
         .. code-block:: python
@@ -728,7 +729,7 @@ class Interferometer():
             arg_idxs = tuple(range(len(func_calls)))
             return func_call_combined % arg_idxs
 
-        # Loop over each port, generate wavefunction calculation code
+        # Loop over each interfering port, generate wavefunction calculation code
         wavefunc_calcs = []
         ports = list(iports.keys())
         ports.sort()
@@ -738,10 +739,27 @@ class Interferometer():
             wavefunc_calcs.append('')
         del wavefunc_calcs[-1]
 
+        # If provided, loop over each junk port, generate wavefunction calculation code
+        if jports is not None:
+            jwavefunc_calcs = []
+            jpop_calcs = []
+            ports = list(jports.keys())
+            ports.sort()
+            for port in ports:
+                jwf_to_pop = []
+                for i, node in enumerate(jports[port]):
+                    jwf_label = f'junk_wf{port}_{i}'
+                    jwavefunc_calcs.append(f'{jwf_label} = {_gen_wavefunction_calc_along_path(node)}')
+                    jwf_to_pop.append(f'np.sum(np.abs({jwf_label}))**2, axis=0)')
+                jpop_calcs.append(f'junk_pop{port} = {("+".join(jwf_to_pop))}')
+
         # Open up template, generate code
         env = jinja2.Environment(loader=jinja2.FileSystemLoader(resources.files(templates)))
         templ = env.get_template('ifr_codegen.pytemplate')
-        return templ.render(DeltaTs=DeltaTs, num_beamsplitters=nbs, wavefunc_calcs=wavefunc_calcs, ports=ports)
+        if jports is not None:
+            return templ.render(DeltaTs=DeltaTs, num_beamsplitters=nbs, wavefunc_calcs=wavefunc_calcs, ports=ports, junk_wavefunc_calcs=jwavefunc_calcs, junk_pops=jpop_calcs)
+        else:
+            return templ.render(DeltaTs=DeltaTs, num_beamsplitters=nbs, wavefunc_calcs=wavefunc_calcs, ports=ports)
 
 class Unitary(ABC):
     """Represents a unitary transformation (i.e. free evolution, beamsplitter, etc.). The unitary transformation is applied to the provided state (represented as a :code:`InterferometerNode`) via the :code:`apply` method. The transformed state is added as a child node(s) of the provided :code:`InterferometerNode`. The new child node represents the state *after the unitary transformation has been performed*. Note that the phase of any given node is only the phase imparted by the unitary operator that generated it.
