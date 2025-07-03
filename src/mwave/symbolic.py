@@ -629,6 +629,7 @@ class Interferometer():
         
         :param iports: A dictionary of interfering port populations to generate a numerical computation for.
         :param jports: A dictionary of junk port populations to generate a numerical computation for. Optional.
+        :param subs_free: A dictionary of subsitutions to make before evaluating the free evoluation parameters. Defaults to an empty set of substitutions.
         :returns: The code as a string.
         
         .. code-block:: python
