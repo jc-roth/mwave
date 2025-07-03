@@ -1,6 +1,6 @@
 import numpy as np
 
-def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d, bragglookup, omegalookup, lplookup, deltalookup):
+def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d, bragglookup, omegalookup, lplookup, deltalookup, incl_junk=False):
     """Computes the :math:`x` and :math:`y` points of a simultaneous conjugate Ramsey-Borde interferometer (SCRBI) ellipse from the provided vectors of atom positions and velocities. In addition to the positions :code:`x0,y0,z0` and velocities :code:`vx,vy,vz` the user must provide big :math:`T` as :code:`T` (in seconds), :math:`T'` as :code:`Tp` (in seconds), :math:`n_\mathrm{Bragg}` as :code:`n`, and :math:`N_\mathrm{Bloch}` as :code:`N`. The average population at each output port is then used to compute :code:`x` and :code:`y`.
     
     In order to generate a single ellipse from a single function call the user can pass a vector of common mode phases :code:`phi_c`. This common mode phase is then added to the appropriate wavefunctions before the calculation of the output port populations to produce an ellipse. The length of the returned :code:`x` and :code:`y` is given by the length of :code:`phi_c`. The user may also pass in a value for :code:`phi_d`, which sets the opening of the ellipse.
@@ -31,6 +31,7 @@ def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d,
     :param omegalookup: Function that returns the effective Rabi frequency at the specified location. Must accept arguments :code:`x, y, z`, where all arguments are vectors of the same length.
     :param lplookup: Function that returns the local laser phase at the specified location. Must accept arguments :code:`x, y, z`, where all arguments are vectors of the same length.
     :param deltalookup: Function that returns the detuning specified velocity. Must accept arguments :code:`v` in whatever units are used by the user to define the cloud velocity spread. The returned detuning must be in units of the recoil frequency.
+    :param incl_junk: If :code:`True` the junk ports are included in the calculation of x and y (i.e. x is calculated via :code:`(pA - pB)/(pA + pB)` where :code:`pA` is the population in output port A plus the population in the junk ports that exit with the same momentum as port A, same for :code:`pB`, etc.). Defaults to :code:`False`.
     :return: The x and y values of the ellipse. These will have the same length as the provided vector :code:`phi_c`.
     
     .. code-block:: python
@@ -139,18 +140,28 @@ def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d,
     wf2_mN_mN = bragglookup(-N, -N, omega2, delta2)
     wf2_mN_mnmN = bragglookup(-N, -N-n, omega2, delta2)
 
+    wf3_npN_npN = bragglookup(n+N, n+N, omega3, delta3)
+    wf3_npN_2npN = bragglookup(n+N, 2*n+N, omega3, delta3)
+    wf3_2npN_2npN = bragglookup(2*n+N, 2*n+N, omega3, delta3)
+    wf3_2npN_npN = bragglookup(2*n+N, n+N, omega3, delta3)
+
+    wf3_mN_mN = bragglookup(-N, -N, omega3, delta3)
+    wf3_mN_mnmN = bragglookup(-N, -N-n, omega3, delta3)
+    wf3_mnmN_mN = bragglookup(-N-n, -N, omega3, delta3)
+    wf3_mnmN_mnmN = bragglookup(-N-n, -N-n, omega3, delta3)
+
     # Compute wavefunctions
-    portA_1 = wf0_0_0*wf1_0_n*np.exp(1j*phase1)*wf2_npN_2npN*np.exp(1j*phase2)*bragglookup(2*n+N, 2*n+N, omega3, delta3)
-    portA_2 = wf0_0_n*np.exp(1j*phase0)*wf1_n_n*wf2_npN_npN*bragglookup(n+N, 2*n+N, omega3, delta3)*np.exp(1j*phase3)
+    portA_1 = wf0_0_0*wf1_0_n*np.exp(1j*phase1)*wf2_npN_2npN*np.exp(1j*phase2)*wf3_2npN_2npN
+    portA_2 = wf0_0_n*np.exp(1j*phase0)*wf1_n_n*wf2_npN_npN*wf3_npN_2npN*np.exp(1j*phase3)
 
-    portB_1 = wf0_0_0*wf1_0_n*np.exp(1j*phase1)*wf2_npN_2npN*np.exp(1j*phase2)*bragglookup(2*n+N, n+N, omega3, delta3)*np.exp(-1j*phase3)
-    portB_2 = wf0_0_n*np.exp(1j*phase0)*wf1_n_n*wf2_npN_npN*bragglookup(n+N, n+N, omega3, delta3)
+    portB_1 = wf0_0_0*wf1_0_n*np.exp(1j*phase1)*wf2_npN_2npN*np.exp(1j*phase2)*wf3_2npN_npN*np.exp(-1j*phase3)
+    portB_2 = wf0_0_n*np.exp(1j*phase0)*wf1_n_n*wf2_npN_npN*wf3_npN_npN
 
-    portC_1 = wf0_0_0*wf1_0_0*wf2_mN_mN*bragglookup(-N, -N, omega3, delta3)
-    portC_2 = wf0_0_n*np.exp(1j*phase0)*wf1_n_0*np.exp(-1j*phase1)*wf2_mN_mnmN*np.exp(-1j*phase2)*bragglookup(-N-n, -N, omega3, delta3)*np.exp(1j*phase3)
+    portC_1 = wf0_0_0*wf1_0_0*wf2_mN_mN*wf3_mN_mN
+    portC_2 = wf0_0_n*np.exp(1j*phase0)*wf1_n_0*np.exp(-1j*phase1)*wf2_mN_mnmN*np.exp(-1j*phase2)*wf3_mnmN_mN*np.exp(1j*phase3)
 
-    portD_1 = wf0_0_0*wf1_0_0*wf2_mN_mN*bragglookup(-N, -N-n, omega3, delta3)*np.exp(-1j*phase3)
-    portD_2 = wf0_0_n*np.exp(1j*phase0)*wf1_n_0*np.exp(-1j*phase1)*wf2_mN_mnmN*np.exp(-1j*phase2)*bragglookup(-N-n, -N-n, omega3, delta3)
+    portD_1 = wf0_0_0*wf1_0_0*wf2_mN_mN*wf3_mN_mnmN*np.exp(-1j*phase3)
+    portD_2 = wf0_0_n*np.exp(1j*phase0)*wf1_n_0*np.exp(-1j*phase1)*wf2_mN_mnmN*np.exp(-1j*phase2)*wf3_mnmN_mnmN
 
     # Interfere
     wfA = np.einsum('i,j->ij', portA_1, ones) + np.einsum('i,j->ij', portA_2, phi_c*phi_d)
@@ -160,7 +171,28 @@ def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d,
 
     # Compute populations
     pA, pB, pC, pD = np.sum(np.abs(wfA)**2, axis=0), np.sum(np.abs(wfB)**2, axis=0), np.sum(np.abs(wfC)**2, axis=0), np.sum(np.abs(wfD)**2, axis=0)
+    
+    # Compute junk populations
+    junk_wfA_0 = wf0_0_0*wf1_0_n*wf2_npN_npN*wf3_npN_2npN
+    junk_wfA_1 = wf0_0_n*wf1_n_n*wf2_npN_2npN*wf3_2npN_2npN
+    junk_wfB_0 = wf0_0_0*wf1_0_n*wf2_npN_npN*wf3_npN_npN
+    junk_wfB_1 = wf0_0_n*wf1_n_n*wf2_npN_2npN*wf3_2npN_npN
+    junk_wfC_0 = wf0_0_0*wf1_0_0*wf2_mN_mnmN*wf3_mnmN_mN
+    junk_wfC_1 = wf0_0_n*wf1_n_0*wf2_mN_mN*wf3_mN_mN
+    junk_wfD_0 = wf0_0_0*wf1_0_0*wf2_mN_mnmN*wf3_mnmN_mnmN
+    junk_wfD_1 = wf0_0_n*wf1_n_0*wf2_mN_mN*wf3_mN_mnmN
+    
+    junk_popA = np.sum(np.abs(junk_wfA_0)**2, axis=0)+np.sum(np.abs(junk_wfA_1)**2, axis=0)
+    junk_popB = np.sum(np.abs(junk_wfB_0)**2, axis=0)+np.sum(np.abs(junk_wfB_1)**2, axis=0)
+    junk_popC = np.sum(np.abs(junk_wfC_0)**2, axis=0)+np.sum(np.abs(junk_wfC_1)**2, axis=0)
+    junk_popD = np.sum(np.abs(junk_wfD_0)**2, axis=0)+np.sum(np.abs(junk_wfD_1)**2, axis=0)
 
+    if incl_junk:
+        pA += junk_popA
+        pB += junk_popB
+        pC += junk_popC
+        pD += junk_popD
+    
     # Compute ellipse and return
     x, y = (pA - pB)/(pA + pB), (pC - pD)/(pC + pD)
     return x, y
