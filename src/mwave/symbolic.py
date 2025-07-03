@@ -624,7 +624,7 @@ class Interferometer():
         # Return
         return iports, jports, no_port
     
-    def generate_code_outline(self, iports, jports=None):
+    def generate_code_outline(self, iports, jports=None, subs_free={}):
         """This function generates an outline of python code that can be used to compute the population at all of the output ports of an arbitrary interferometer geometry. The code will not be immediately ready to run. The user must adapt the automatically generated functions for their own use.
         
         :param iports: A dictionary of interfering port populations to generate a numerical computation for.
@@ -708,6 +708,7 @@ class Interferometer():
         # Make a function that generates code to compute the wavefunction at each output port
         def _gen_wavefunction_calc_along_path(node):
             func_calls = []
+            n_bs_calls = 0
             cnode = node
 
             # Loop over lineage, append to function call
@@ -717,6 +718,9 @@ class Interferometer():
                     n = cnode.parent.n
                     if gen.n1 == n or gen.n2 == n:
                         func_calls.append(f'bs({n},{cnode.n},*args%i)')
+                        n_bs_calls += 1
+                elif isinstance(gen, FreeEv):
+                    func_calls.append(f'free({sympy.pycode(sympy.simplify(cnode.z.subs(subs_free)))},{sympy.pycode(sympy.simplify(cnode.v.subs(subs_free)))},{sympy.pycode(sympy.simplify(gen._T))})')
                 cnode = cnode.parent
         
             # Reverse func_calls to be in time order
@@ -726,7 +730,7 @@ class Interferometer():
             func_call_combined = '*'.join(func_calls)
         
             # Add in argument indices, return
-            arg_idxs = tuple(range(len(func_calls)))
+            arg_idxs = tuple(range(n_bs_calls))
             return func_call_combined % arg_idxs
 
         # Loop over each interfering port, generate wavefunction calculation code

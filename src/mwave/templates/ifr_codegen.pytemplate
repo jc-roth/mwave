@@ -5,7 +5,16 @@ def bs(ni, nf, *args):
     if ni == nf:
         return (0.5+0j)*args[0]
     else:
-        return (0+0.5j)*args[0]
+        return (0.0 - 1.0j/np.sqrt(2))
+
+gravity = 0.0
+gravity_grad = 0.0
+def free(z, v, t):
+    phase = m*t*v**2/2/hbar
+    if gravity != 0.0:
+        phase += gravity*m*t*(gravity*t**2-3*(t*v+z))/3/hbar
+        if gravity_grad != 0.0:
+            phase += gravity_grad*m*t*(2*gravity**2*t**4-10*gravity*t**2*(t*v+2*z)+5*(2*t**2*v**2+6*t*v*z+3*z**2))/30/hbar
 
 def calc_populations(x0, y0, v0, ncopies):
     
@@ -36,8 +45,8 @@ def calc_populations(x0, y0, v0, ncopies):
     {% for port in ports -%}
         pop{{port}} = np.sum(np.abs(port{{port}})**2, axis=0)
     {% endfor %}
-    # Compute junk populations
     {% if junk_wavefunc_calcs -%}
+    # Compute junk populations
     {% for junk_wavefunc_calc in junk_wavefunc_calcs -%}
         {{junk_wavefunc_calc}}
     {% endfor %}
