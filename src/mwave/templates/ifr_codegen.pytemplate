@@ -1,9 +1,9 @@
 def args_lookup(x, y, v):
     return (np.ones_like(x), )
 
-def bs(ni, nf, *args):
-    if ni == nf:
-        return (0.5+0j)*args[0]
+def bs(n0, nf, *args):
+    if n0 == nf:
+        return (1.0/np.sqrt(2) + 0.0j)
     else:
         return (0.0 - 1.0j/np.sqrt(2))
 
