@@ -115,10 +115,10 @@ def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d,
     omega3 = omegalookup(x3, y3, z3)
 
     # Lookup local phase
-    phase0 = lplookup(x0, y0, z0)*n
-    phase1 = lplookup(x1, y1, z1)*n
-    phase2 = lplookup(x2, y2, z2)*n
-    phase3 = lplookup(x3, y3, z3)*n
+    phase0 = lplookup(x0, y0, z0)*2*n
+    phase1 = lplookup(x1, y1, z1)*2*n
+    phase2 = lplookup(x2, y2, z2)*2*n
+    phase3 = lplookup(x3, y3, z3)*2*n
 
     # Compute detunings at each pulse location
     delta0 = deltalookup(v0, n)
