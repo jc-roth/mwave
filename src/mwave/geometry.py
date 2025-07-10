@@ -51,11 +51,9 @@ def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d,
     
     Currently the function does not account for gravity in the calculation of z positions at each beamsplitter.
     
-    Currently the function does not account for Junk ports.
-    
     Currently the function accounts for the phase produced from the Bragg beamsplitter process (determined by calling :code:`bragglookup`), and the local wavefront phase (determined by calling :code:`lplookup`). Unless the user implements it manually in :code:`bragglookup` or :code:`lplookup` the global laser phase (i.e. :math:`\\omega t-kz`) will be ignored. Other ignored sources of phase include the free evolution phase, gravity gradient phase, and separation phases.
     
-    As it is difficult to program a completely general function for all of the scenarios that we might be interested in, it might be a good idea to open up the source code of this function and write a custom version!
+    As it is difficult to program a completely general function for all of the scenarios that we might be interested in, it might be a good idea to open up the source code of this function and write a custom version for your use case!
     
     :param x0: Vector of initial atom x positions.
     :param y0: Vector of initial atom y positions.
