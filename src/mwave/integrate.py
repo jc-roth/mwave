@@ -330,6 +330,10 @@ def make_kvec(n0, nf, npad=10):
     return kvec, k0_idx, kf_idx
 
 def make_phi(kvec, n0):
+    """Creates a vector the same length as :code:`kvec` filled with all zeros aside from in the index where :code:`kvec==2*n0`, which is set to :code:`1`.
+    
+    :param kvec: The momentum state values at which :code:`phi` is defined.
+    :param n0: The state to initialize all amplitude in."""
     k0_idx = np.argmin(np.abs(kvec - n0*2))
     phi0 = np.zeros(len(kvec), dtype=np.complex128)
     phi0[k0_idx] = 1
