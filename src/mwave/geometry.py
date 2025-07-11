@@ -35,8 +35,8 @@ def cloud_init(natoms, sigma_cloud, sigma_transverse_v, sigma_vertical_v, x_offs
     y0 = np.random.randn(natoms)*sigma_cloud[1] + y_offset
     z0 = np.random.randn(natoms)*sigma_cloud[2] + z_offset
     
-    vx = np.random.randn(natoms)*sigma_transverse_v + vx_offset
-    vy = np.random.randn(natoms)*sigma_transverse_v + vy_offset
+    vx = np.random.randn(natoms)*sigma_transverse_v[0] + vx_offset
+    vy = np.random.randn(natoms)*sigma_transverse_v[1] + vy_offset
     vz = np.random.randn(natoms)*sigma_vertical_v + vz_offset
     
     # Return
