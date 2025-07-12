@@ -305,7 +305,7 @@ def make_kvec(n0, nf, npad=10):
     :param n0: The initial momentum state to include in the space.
     :param nf: The final momentums tate to include in the space.
     :param npad: The padding to include on each side of the initial and final momentum states.
-    :returns: A vector of momentum states spaced by :math:`2\\hbar k`
+    :returns: A tuple containing a vector of momentum states spaced by :math:`2\\hbar k`, the index of :code:`n0` in the vector, and the index of :code:`nf` in the vector.
     
     Example
 
