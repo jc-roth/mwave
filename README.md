@@ -1,6 +1,10 @@
+# `mwave`
+
+A package for exploring matterwave interferometer geometries and for numerically solving the Bloch Hamiltonian that describes Bragg diffraction and Bloch oscillations.
+
 ## Documentation
 
-On readthedocs [here](https://mwave.readthedocs.io).
+Located on readthedocs [here](https://mwave.readthedocs.io/latest/quickstart.html).
 
 ## Building the package
 
@@ -29,3 +33,4 @@ To test the package execute
 ```bash
 pytest
 ```
+
