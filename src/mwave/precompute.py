@@ -72,6 +72,38 @@ class NotPrecomputedError(Exception):
     def __init__(self, path):
         super().__init__(f'Precompute table does not include {path}')
         
+def load_lookup_table(fname, kvec=None, method='cubic'):
+    """Loads a single lookup table where :math:`n_0=0`, returns a function that interpolates this table using the provided :code:`method`. The lookup table must be a 2D grid over :math:`\Omega` and :math:`\delta`. If :code:`kvec` is provided then the function aligns its k-vector with the one defined by :code:`kvec`.
+    
+    :param fname: The filename to load the precompute table from. Internally the read is performed using :code:`read_bragg_precompute`.
+    :param kvec: Optional. If provided only the values in :code:`kvec` will be returned by the interpolation function.
+    :param method: The interpolation method to use. This is directly passed to :py:meth:`scipy.interpolate.RegularGridInterpolator`.
+    :return: A tuple containing :code:`(kvec, interpolation_function)`, where the :code:`interpolation_function` is returned by :py:meth:`scipy.interpolate.RegularGridInterpolator`."""
+    
+    # Load table, check it is correct
+    phi, kvec_precomputed, grid = read_bragg_precompute(fname, 0, 0, 0)
+    if grid[0][1] != 'omegas' or grid[1][1] != 'deltas':
+        raise ValueError('The provided lookup table must be a 2D grid over omegas and deltas')
+    
+    # Create interpolation function
+    phi_interpolated = RGI((grid[0][0], grid[1][0]), phi, method=method)
+    
+    if kvec is None:
+        # If no alignment is requested just return
+        return kvec_precomputed, phi_interpolated
+    else:
+        # Attempt to align kvec and kvec_precomputed
+        align_idxs = np.isin(kvec_precomputed, kvec)
+        
+        if np.array_equal(kvec_precomputed[align_idxs], kvec):
+            # Can align kvec_precomputed and kvec, define a precompute function and return
+            def precompfnc(args):
+                return phi_interpolated(args)[...,align_idxs]
+            return kvec_precomputed[align_idxs], precompfnc
+        else:
+            # Cannot perform alignment, raise error
+            raise ValueError('Could not align kvec_precomputed with kvec, please use a precompute table that can be aligned with kvec.')
+        
 def load_fast_bragg_evaluator(fname, n_init, n_bragg, N_bloch):
     """This function loads a function that quickly evaluates Bragg pulse precompute tables for SCRBI geometries on a grid of inputs using the scipy regular grid interpolator with the cubic method enabled. This is useful for simulating a atom cloud with transverse motion.
     
