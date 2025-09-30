@@ -4,16 +4,16 @@ from tqdm import tqdm
 import math
 
 def kvec_to_x(kvec, klaser):
-    return np.fft.fftshift(np.fft.fftfreq(len(kvec), np.diff(kvec)[0])*2*np.pi/klaser)
+    return np.fft.fftfreq(len(kvec), np.diff(kvec)[0])*2*np.pi/klaser
 
 def x_to_kvec(x, klaser):
-    return np.fft.fftshift(np.fft.fftfreq(len(x), np.diff(x)[0])*2*np.pi/klaser)
+    return np.fft.fftfreq(len(x), np.diff(x)[0])*2*np.pi/klaser
 
 def pspace_to_xspace(vec):
-    return np.fft.fftshift(np.fft.ifft(vec))
+    return np.fft.ifft(vec)
 
 def xspace_to_pspace(vec):
-    return np.fft.fft(np.fft.ifftshift(vec))
+    return np.fft.fft(vec)
 
 def make_continuous_kvec(n_min, n_max, S):
     nvec = np.arange(n_min, n_max+1)
@@ -33,15 +33,21 @@ def make_continuous_phi(kvec, n0, sig):
     phi0 = phi0.astype(np.complex128)
     return phi0
 
+def find_min_S_N(klaser, x_resolution, x_extent, p_resolution, p_extent):
+    """Computes the minimum values for :math:`S` and :math`N` using the prescription from *A fast and accurate method for simulating Bragg atom interferometers*."""
+    S = int(np.ceil(max(klaser/p_resolution, x_extent*klaser)))
+    N = int(np.ceil(max(1/(klaser*x_resolution), p_extent/(2*klaser))))
+    return S, N
+
 # Define split step integrator
-def splitstep(x, tfinal, dt, Vfnc, psi0, klaser, store_hist = True, progress=True):
+def splitstep(x, tfinal, dt, Vfnc, psi0, klaser, tstart=0.0, store_hist = True, progress=True):
 
     # Ensure phi0 is correct type
     psi0 = psi0.astype(np.complex128)
     
     # Determine number of steps, create time vector
-    nsteps = math.ceil(tfinal/dt)
-    tvec = np.linspace(0, tfinal, nsteps)
+    nsteps = math.ceil((tfinal-tstart)/dt)
+    tvec = np.linspace(tstart, tfinal, nsteps)
     dt = np.diff(tvec)[0]
 
     # Create vector to store output
