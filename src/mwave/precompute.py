@@ -158,3 +158,112 @@ def load_fast_bragg_evaluator(fname, n_init, n_bragg, N_bloch):
 
     # Return the fast Bragg evaluation function
     return fbe
+def load_precomputed_gbragg(single_path, multi_path=None, table_sigma=None, table_modulation_frequency=None, flip_negatives=True):
+    
+    # Multifrequency and precompute table logic checking
+    disable_multifrequency = True
+    if multi_path:
+        disable_multifrequency = False
+        
+    check_sigma = False
+    if table_sigma:
+        check_sigma = True
+        
+    check_mod_freq = False
+    if table_modulation_frequency:
+        check_mod_freq = True
+        
+    # Throw error if table_modulation_frequency is provided but multi_path is not
+    if table_modulation_frequency and not multi_path:
+        raise ValueError('If table_modulation_frequency a valid multi_path must be provided as well.')
+
+    # Load single frequency precompute table
+    print('Loading single frequency Bragg precompute table, this could take a while...')
+    kvec_precomp_single, fnc_interp_single = load_lookup_table(single_path)
+    print('Precompute table loaded! Performing checks...')
+
+    # Check that kvec_precomp can be flipped properly if flip_negatives is True
+    if flip_negatives:
+        if not np.array_equal(-kvec_precomp_single, np.flip(kvec_precomp_single)):
+            raise ValueError('flip_negatives is True but the precompute table kvector cannot be flipped properly.')
+
+    print('Checks passed!') 
+
+    # If multifrequency table reference is passed in, load
+    if not disable_multifrequency:
+        # Load pre
+        # compute table
+        print('Loading multifrequency Bragg precompute table, this could take a while...')
+        kvec_precomp_multi, fnc_interp_multi = load_lookup_table(multi_path)
+        print('Precompute table loaded! Performing checks...')
+
+        # Check that kvec_precomp can be flipped properly if flip_negatives is True
+        if flip_negatives:
+            if not np.array_equal(-kvec_precomp_multi, np.flip(kvec_precomp_multi)):
+                raise ValueError('flip_negatives is True but the precompute table kvector cannot be flipped properly.')
+
+        print('Checks passed!')
+
+    # Define precompute function
+    def gbragg_precomp(kvec, k0, sigma, omega, delta, delta_phase, mod_freq=None, mod_phase=0.0):
+        
+        if mod_phase != 0.0:
+            raise ValueError('Only a modulation phase of 0.0 is supported currently.')
+        
+        # Check sigma
+        if check_sigma and sigma != table_sigma:
+            raise ValueError(f'Provided sigma is {sigma}, inconsistent with precompute sigma of {table_sigma}.')
+        
+        # Check modulation frequency
+        if not disable_multifrequency and check_mod_freq and mod_freq and mod_freq != table_modulation_frequency:
+            raise ValueError(f'Provided mod_freq is {mod_freq}, inconsistent with precompute mod_freq of {table_modulation_frequency}.')
+        if disable_multifrequency and mod_freq:
+            raise ValueError(f'No multifrequency precompute table was provided, mod_freq must be None.')
+        
+        # Select precompute table based on input params and disable_multifrequency state
+        kvec_precomp = kvec_precomp_single
+        fnc_interp = fnc_interp_single
+        if not disable_multifrequency and mod_freq:
+            kvec_precomp = kvec_precomp_multi
+            fnc_interp = fnc_interp_multi
+        
+        # Transform delta to the frame moving with the state we are currently in
+        deltas_transformed = delta - 4*k0
+
+        # If flip_negatives is True we use the symmetry of the problem
+        # If we start at n=0 then we can map delta -> -delta if we flip the output momentum states
+        if flip_negatives:
+            neg_idxs = deltas_transformed < 0.0
+            
+            phi_out = np.full((len(omega), len(kvec_precomp)), np.nan, dtype=np.complex128)
+            
+            # Make negative deltas positive, compute wavefunctions, flip output
+            phi_out[neg_idxs, :] = np.flip(fnc_interp((omega[neg_idxs], -deltas_transformed[neg_idxs])), axis=1)
+            
+            # Compute positive delta wavefunctions
+            phi_out[~neg_idxs, :] = fnc_interp((omega[~neg_idxs], deltas_transformed[~neg_idxs]))
+                        
+        else:
+            # Compute Bloch Hamiltonian function
+            phi_out = fnc_interp((omega, deltas_transformed))
+                        
+        # Apply phase
+        phi_out *= np.exp(-1j*(delta_phase)*kvec_precomp/2)
+        
+        # Shift the output states
+        Deltan = k0//2
+        phi_out_filled = np.zeros_like(phi_out, dtype=np.complex128)
+        
+        if Deltan == 0:
+            phi_out_filled[:,:] = phi_out[:,:]
+        elif Deltan < 0:
+            phi_out_filled[:,:Deltan] = phi_out[:,-Deltan:]
+        else:
+            phi_out_filled[:,Deltan:] = phi_out[:,:-Deltan]
+        
+        # Return
+        alignment_idxs = np.isin(kvec_precomp, kvec)
+        return phi_out_filled[:, alignment_idxs]
+    
+    # Return
+    return gbragg_precomp
