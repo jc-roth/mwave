@@ -1,28 +1,14 @@
-Numeric Reference
+Numeric reference
 #################
 
-Integrate module
-================
+NumericBraggInterferometer class
+================================
 
-Most functions in the :py:mod:`mwave.integrate` module use :py:mod:`numba` to increase performance.
-
-.. automodule:: mwave.integrate
+.. autoclass:: mwave.numeric.NumericBraggInterferometer
    :members:
 
-Simulation Utils module
-=======================
+NumericTreeNode class
+=====================
 
-.. automodule:: mwave.simulation_utils
-   :members:
-
-Precompute module
-=================
-
-.. automodule:: mwave.precompute
-   :members:
-
-Interpolate module
-==================
-
-.. automodule:: mwave.interpolation
+.. autoclass:: mwave.numeric.NumericTreeNode
    :members:

@@ -10,8 +10,9 @@
 
    quickstart
    examples
-   numeric
+   integration_utils
    symbolic
+   numeric
 
 Indices and tables
 ==================
