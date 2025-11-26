@@ -10,7 +10,7 @@ packages = [{include = 'mwave', from ='src'}]
 # include = [{path = 'mwave-data', format = ['sdist', 'wheel']}]
 
 # Exclude incomplete modules
-exclude = ['src/mwave/interpolation.py', 'src/mwave/xintegrate.py']
+exclude = ['src/mwave/interpolation.py', 'src/mwave/integrate/xintegrate.py']
 
 [tool.poetry.dependencies]
 python = "^3.10"
