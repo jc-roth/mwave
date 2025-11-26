@@ -9,10 +9,10 @@ Most functions in the :py:mod:`mwave.integrate` module use :py:mod:`numba` to in
 .. automodule:: mwave.integrate
    :members:
 
-Geometry module
-===============
+Simulation Utils module
+=======================
 
-.. automodule:: mwave.geometry
+.. automodule:: mwave.simulation_utils
    :members:
 
 Precompute module
