@@ -75,6 +75,8 @@ class NotPrecomputedError(Exception):
 def load_lookup_table(fname, kvec=None, method='cubic'):
     """Loads a single lookup table where :math:`n_0=0`, returns a function that interpolates this table using the provided :code:`method`. The lookup table must be a 2D grid over :math:`\Omega` and :math:`\delta`. If :code:`kvec` is provided then the function aligns its k-vector with the one defined by :code:`kvec`.
     
+    Also see the :py:meth:`mwave.precompute.load_precomputed_gbragg` function.
+    
     :param fname: The filename to load the precompute table from. Internally the read is performed using :code:`read_bragg_precompute`.
     :param kvec: Optional. If provided only the values in :code:`kvec` will be returned by the interpolation function.
     :param method: The interpolation method to use. This is directly passed to :py:meth:`scipy.interpolate.RegularGridInterpolator`.
@@ -158,7 +160,23 @@ def load_fast_bragg_evaluator(fname, n_init, n_bragg, N_bloch):
 
     # Return the fast Bragg evaluation function
     return fbe
-def load_precomputed_gbragg(single_path, multi_path=None, table_sigma=None, table_modulation_frequency=None, flip_negatives=True):
+
+def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_sigma=None, table_modulation_frequency=None, flip_negatives=True):
+    """Returns a function that provides similar functionality to the :py:meth:`mwave.integrate.gbragg` function but uses a lookup table for faster evaluation.
+    
+    For example usage of this function checks against equivalent direct computation methods see Examples/Using precompute tables.
+    
+    Internally the function loads a lookup table where :math:`n_0=0` using the :py:meth:`mwave.precompute.load_lookup_table` function. Then several frame transformations are performed to transform an arbitrary input state to make $n_0\to n_0'=0$. The user can optionally provide a multifrequency lookup table as well, in which case the returned function has the capability to return wavefunctions for both single and multifrequency Bragg pulses.
+    
+    :param single_path: The name of the single frequency HDF5 precompute table to load. :code:`phi` Datasets are loaded using the :code:`read_bragg_precompute` function. It is assumed :code:`phi` is computed on a grid of :code:`(omega,delta)`. If this is not the case this function will return gibberish!
+    :param multi_path: The name of the multi-frequency HDF5 precompute table to load. :code:`phi` Datasets are loaded using the :code:`read_bragg_precompute` function. It is assumed :code:`phi` is computed on a grid of :code:`(omega,delta)`. If this is not the case this function will return gibberish!
+    :param method: The interpolation method to use. This is directly passed to :py:meth:`scipy.interpolate.RegularGridInterpolator`.
+    :param table_sigma: The value of sigma used in the lookup table. This is not directly checked against the precompute table contents, but it is used to check user input to the returned function.
+    :param table_tau_factor: The value of the :code:`tau_factor` parameter used in the lookup table. :code:`tau_factor` sets the total duration of the Bragg pulse to be :code:`2*tau_factor*sigma`. As with :code:`table_sigma` this is not directly checked against the precompute table contents, but it is used to check user input to the returned function.
+    :param table_modulation_frequency: The value of the modulation frequency used in the lookup table. This is not directly checked against the precompute table contents, but it is used to check user input to the returned function.
+    :param flip_negatives: If True the symmetry of the problem is used to interpolate negative provided values of :code:`delta` to the returned function. This means that the precompute table does not need to include negative values of :code:`delta`.
+    :return: A function that utilizes the referenced lookup tables to compute the effect of the Bragg pulse that takes arguments :code:`kvec, k0, sigma, omega, delta, delta_phase, mod_freq=None, mod_phase=0.0`. See the Examples/Using precompute tables for example usage.
+    """
     
     # Multifrequency and precompute table logic checking
     disable_multifrequency = True
@@ -179,7 +197,7 @@ def load_precomputed_gbragg(single_path, multi_path=None, table_sigma=None, tabl
 
     # Load single frequency precompute table
     print('Loading single frequency Bragg precompute table, this could take a while...')
-    kvec_precomp_single, fnc_interp_single = load_lookup_table(single_path)
+    kvec_precomp_single, fnc_interp_single = load_lookup_table(single_path, method=method)
     print('Precompute table loaded! Performing checks...')
 
     # Check that kvec_precomp can be flipped properly if flip_negatives is True
@@ -194,7 +212,7 @@ def load_precomputed_gbragg(single_path, multi_path=None, table_sigma=None, tabl
         # Load pre
         # compute table
         print('Loading multifrequency Bragg precompute table, this could take a while...')
-        kvec_precomp_multi, fnc_interp_multi = load_lookup_table(multi_path)
+        kvec_precomp_multi, fnc_interp_multi = load_lookup_table(multi_path, method=method)
         print('Precompute table loaded! Performing checks...')
 
         # Check that kvec_precomp can be flipped properly if flip_negatives is True
