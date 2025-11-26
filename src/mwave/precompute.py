@@ -174,7 +174,7 @@ def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_
     :param table_sigma: The value of sigma used in the lookup table. This is not directly checked against the precompute table contents, but it is used to check user input to the returned function.
     :param table_modulation_frequency: The value of the modulation frequency used in the lookup table. This is not directly checked against the precompute table contents, but it is used to check user input to the returned function.
     :param flip_negatives: If True the symmetry of the problem is used to interpolate negative provided values of :code:`delta` to the returned function. This means that the precompute table does not need to include negative values of :code:`delta`.
-    :return: A function that utilizes the referenced lookup tables to compute the effect of the Bragg pulse that takes arguments :code:`kvec, k0, sigma, omega, delta, delta_phase, mod_freq=None, mod_phase=0.0`. See the Examples/Using precompute tables for example usage.
+    :return: A function that utilizes the referenced lookup tables to compute the effect of the Bragg pulse that takes arguments :code:`kvec, k0, sigma, omega, delta, delta_phase, mod_freq=None, mod_phase=0.0`. See :doc:`/examples/using_precompute_tables` for example usage.
     """
     
     # Multifrequency and precompute table logic checking
