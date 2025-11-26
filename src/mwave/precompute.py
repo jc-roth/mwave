@@ -2,7 +2,7 @@ import numpy as np
 import h5py
 from scipy.interpolate import RegularGridInterpolator as RGI
 
-def write_bragg_precompute(fname, phi, kvec, grid, n0, nf, n_bragg, N_bloch=None):
+def write_bragg_precompute(fname, phi, kvec, grid, n0, nf, n_bragg, N_bloch=None, attributes={}):
     """Saves the precomputed dataset in an HDF5 file with the given name.
 
     :param fname: The name of the HDF5 file to write to.
@@ -42,8 +42,12 @@ def write_bragg_precompute(fname, phi, kvec, grid, n0, nf, n_bragg, N_bloch=None
         g_grid.attrs.create('grid_def', ','.join([g[1] for g in grid]))
         for g in grid:
             g_grid.create_dataset(g[1], data=g[0], compression='gzip')
+            
+        # Add attributes if provided
+        for key in attributes:
+            g_data.attrs.create(key, attributes[key])
 
-def read_bragg_precompute(fname, n0, nf, n_bragg, N_bloch=None):
+def read_bragg_precompute(fname, n0, nf, n_bragg, N_bloch=None, load_attributes=False):
     """Reads a precomputed Bragg dataset from an HDF5 file.
 
     :param fname: The name of the HDF5 file to read from.
@@ -51,7 +55,8 @@ def read_bragg_precompute(fname, n0, nf, n_bragg, N_bloch=None):
     :param nf: The final momentum state of the Bragg process.
     :param n_bragg: The Bragg order used.
     :param N_bloch:  Optional. The Bloch order used in the simulation. This will load a multifrequency simulation.
-    :return: A tuple containing :code:`phi, kvec, grid`. For a description of :code:`grid` see :code:`write_bragg_precompute`.
+    :param load_attributes: If True the attributes associated with the lookup table are returned as well.
+    :return: A tuple containing :code:`phi, kvec, grid`. For a description of :code:`grid` see :code:`write_bragg_precompute`.  If :code:`load_attributes` is True then the attributes dictionary is appended to the tuple..
     """
 
     # Define group path
@@ -66,6 +71,8 @@ def read_bragg_precompute(fname, n0, nf, n_bragg, N_bloch=None):
             raise NotPrecomputedError(grp_path)
         g = f[grp_path] # get group
         grid_vars = g['grid'].attrs['grid_def'].split(',') # get grid variables
+        if load_attributes:
+            return g['phi'][()], g['kvec'][()], [(g[f'grid/{var}'][()], var) for var in grid_vars], dict(g.attrs.items())
         return g['phi'][()], g['kvec'][()], [(g[f'grid/{var}'][()], var) for var in grid_vars] # return
 
 class NotPrecomputedError(Exception):
