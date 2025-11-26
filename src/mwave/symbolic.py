@@ -346,7 +346,7 @@ class Interferometer():
 
     :param init_node: The :code:`InterferometerNode` instance to use as the inital interferometer state. If not provided an :code:`InterferometerNode` is created with default parameters.
 
-    For an example of how the :code:`Interferometer` class can be used see :ref:`sci_example`.
+    For an example of how the :code:`Interferometer` class can be used see :doc:`examples/geometries`.
     """
 
     def __init__(self, init_node=None):
@@ -784,7 +784,7 @@ class Unitary(ABC):
         pass
 
     def gen_numeric(self, node, args, subs):
-        """Function that child classes of :py:class:`mwave.symbolic.Unitary` can override in order to include numerically calculated corrections in phase calculations. See the example :ref:`numercal_evaluation_sci` for more information on how to use this function."""
+        """Function that child classes of :py:class:`mwave.symbolic.Unitary` can override in order to include numerically calculated corrections in phase calculations. See the example :doc:`/examples/systematics/sci_diffraction_phase_calculation` for more information on how to use this function."""
         raise NotImplementedError('apply_numeric is not implemented.')
 
     def __matmul__(self, obj):

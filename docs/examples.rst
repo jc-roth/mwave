@@ -10,3 +10,4 @@ Examples
    examples/bloch_ham_integration
    examples/systematic_studies
    examples/single_bragg_matching
+   examples/using_precompute_tables

@@ -164,7 +164,7 @@ def load_fast_bragg_evaluator(fname, n_init, n_bragg, N_bloch):
 def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_sigma=None, table_modulation_frequency=None, flip_negatives=True):
     """Returns a function that provides similar functionality to the :py:meth:`mwave.integrate.gbragg` function but uses a lookup table for faster evaluation.
     
-    For example usage of this function checks against equivalent direct computation methods see Examples/Using precompute tables.
+    For example usage of this function checks against equivalent direct computation methods see :doc:`/examples/using_precompute_tables`.
     
     Internally the function loads a lookup table where :math:`n_0=0` using the :py:meth:`mwave.precompute.load_lookup_table` function. Then several frame transformations are performed to transform an arbitrary input state to make $n_0\to n_0'=0$. The user can optionally provide a multifrequency lookup table as well, in which case the returned function has the capability to return wavefunctions for both single and multifrequency Bragg pulses.
     

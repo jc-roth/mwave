@@ -12,7 +12,7 @@ Stable releases of :code:`mwave` can be downloaded from `Github`_ or via:
 
 .. code-block::
 
-   pip install git+https://github.com/jc-roth/mwave@v1.0.2
+   pip install git+https://github.com/jc-roth/mwave@v1.2.0
 
 A first example
 ===============
@@ -264,7 +264,7 @@ same set of beamsplitters, and mirrors that are equivalent via a frame
 transformation. Therefore the imperfect phase imprinted by the Bragg
 process cancels out in this output port.
 
-See the :ref:`numercal_evaluation_sci` section for a more detailed example of how to implement the :py:meth:`mwave.symbolic.Unitary.gen_numeric` function.
+See the :doc:`/examples/systematics/sci_diffraction_phase_calculation` section for a more detailed example of how to implement the :py:meth:`mwave.symbolic.Unitary.gen_numeric` function.
 
 Sometimes we might be interested in having more direct control over the phases
 that contribute to this numerical calculation. To help with this :code:`mwave` provides the code generation function :py:meth:`mwave.symbolic.Interferometer.generate_code_outline`:
