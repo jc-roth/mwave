@@ -380,8 +380,15 @@ def integrate_continuous_to_discrete(kvec, psif, n2hk):
     return np.array(kvec2), np.array(psif2)
 
 def pops_vs_time(kvec, t, phi, ax=None, legend=False):
-    """Make docs"""
+    """
+    Plots the population of each momentum state as a function of time.
 
+    :param kvec: The momentum state vector.
+    :param t: The time vector.
+    :param phi: The wavefunction array with shape (len(t), len(kvec)).
+    :param ax: The matplotlib axis to plot on. If None, a new figure is created.
+    :param legend: If True, a legend is added to the plot.
+    """
     return_ax = False
 
     if ax is None:
