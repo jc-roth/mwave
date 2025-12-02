@@ -47,7 +47,32 @@ def write_bragg_precompute(fname, phi, kvec, grid, n0, nf, n_bragg, N_bloch=None
         for key in attributes:
             g_data.attrs.create(key, attributes[key])
 
-def read_bragg_precompute(fname, n0, nf, n_bragg, N_bloch=None, load_attributes=False):
+def get_bragg_precompute_info(fname, n0, nf, n_bragg, N_bloch=None):
+    """Returns the kvector and grid for a precomputed Bragg dataset in an HDF5 file.
+
+    :param fname: The name of the HDF5 file to read from.
+    :param n0: The initial momentum state of the Bragg process.
+    :param nf: The final momentum state of the Bragg process.
+    :param n_bragg: The Bragg order used.
+    :param N_bloch:  Optional. The Bloch order used in the simulation. This will load a multifrequency simulation.
+    :return: A tuple containing :code:`kvec, grid, attributes_dict`. For a description of :code:`grid` see :code:`write_bragg_precompute`.
+    """
+
+    # Define group path
+    bloch_path = ''
+    if N_bloch is not None:
+        bloch_path = f'/bloch{N_bloch}'
+    grp_path = f'bragg{n_bragg}{bloch_path}/ni{n0}_nf{nf}'
+
+    # Open file, relevant group, and extract all info
+    with h5py.File(fname, 'r') as f:
+        if grp_path not in f:
+            raise NotPrecomputedError(grp_path)
+        g = f[grp_path] # get group
+        grid_vars = g['grid'].attrs['grid_def'].split(',') # get grid variables
+        return g['kvec'][()], [(g[f'grid/{var}'][()], var) for var in grid_vars], dict(g.attrs.items())
+
+def read_bragg_precompute(fname, n0, nf, n_bragg, N_bloch=None, load_attributes=False, grid_slices=None):
     """Reads a precomputed Bragg dataset from an HDF5 file.
 
     :param fname: The name of the HDF5 file to read from.
