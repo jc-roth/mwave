@@ -80,8 +80,9 @@ def read_bragg_precompute(fname, n0, nf, n_bragg, N_bloch=None, load_attributes=
     :param nf: The final momentum state of the Bragg process.
     :param n_bragg: The Bragg order used.
     :param N_bloch:  Optional. The Bloch order used in the simulation. This will load a multifrequency simulation.
-    :param load_attributes: If True the attributes associated with the lookup table are returned as well.
-    :return: A tuple containing :code:`phi, kvec, grid`. For a description of :code:`grid` see :code:`write_bragg_precompute`.  If :code:`load_attributes` is True then the attributes dictionary is appended to the tuple..
+    :param load_attributes: Optional, defaults to False. If True the attributes associated with the lookup table are returned as well.
+    :param grid_slices: Optional. A tuple with the length of the number of grid dimensions. Each entry in the tuple is a slice for the respective grid dimension. This feature is useful if there is limited memory available.
+    :return: A tuple containing :code:`phi, kvec, grid`. For a description of :code:`grid` see :code:`write_bragg_precompute`.  If :code:`load_attributes` is True then the attributes dictionary is appended to the tuple.
     """
 
     # Define group path
@@ -96,6 +97,11 @@ def read_bragg_precompute(fname, n0, nf, n_bragg, N_bloch=None, load_attributes=
             raise NotPrecomputedError(grp_path)
         g = f[grp_path] # get group
         grid_vars = g['grid'].attrs['grid_def'].split(',') # get grid variables
+        if grid_slices:
+            if load_attributes:
+                return g['phi'][grid_slices], g['kvec'][grid_slices[-1]], [(g[f'grid/{var}'][gslice], var) for var, gslice in zip(grid_vars, grid_slices[:-1])], dict(g.attrs.items())
+            return g['phi'][grid_slices], g['kvec'][grid_slices[-1]], [(g[f'grid/{var}'][gslice], var) for var, gslice in zip(grid_vars, grid_slices[:-1])] # return
+            
         if load_attributes:
             return g['phi'][()], g['kvec'][()], [(g[f'grid/{var}'][()], var) for var in grid_vars], dict(g.attrs.items())
         return g['phi'][()], g['kvec'][()], [(g[f'grid/{var}'][()], var) for var in grid_vars] # return
@@ -104,18 +110,33 @@ class NotPrecomputedError(Exception):
     def __init__(self, path):
         super().__init__(f'Precompute table does not include {path}')
         
-def load_lookup_table(fname, kvec=None, method='cubic'):
-    """Loads a single lookup table where :math:`n_0=0`, returns a function that interpolates this table using the provided :code:`method`. The lookup table must be a 2D grid over :math:`\Omega` and :math:`\delta`. If :code:`kvec` is provided then the function aligns its k-vector with the one defined by :code:`kvec`.
+def load_lookup_table(fname, kvec=None, method='cubic', omega_skip=None, delta_skip=None):
+    r"""Loads a single lookup table where :math:`n_0=0`, returns a function that interpolates this table using the provided :code:`method`. The lookup table must be a 2D grid over :math:`\Omega` and :math:`\delta`. If :code:`kvec` is provided then the function aligns its k-vector with the one defined by :code:`kvec`.
     
     Also see the :py:meth:`mwave.precompute.load_precomputed_gbragg` function.
     
     :param fname: The filename to load the precompute table from. Internally the read is performed using :code:`read_bragg_precompute`.
     :param kvec: Optional. If provided only the values in :code:`kvec` will be returned by the interpolation function.
     :param method: The interpolation method to use. This is directly passed to :py:meth:`scipy.interpolate.RegularGridInterpolator`.
+    :param omega_skip: Optional. If provided the loaded table will skip :code:`omega_skip` precomputed grid cells in the :code:`omega` dimension when loading to reduce computer memory usage. This will reduce the interpolation quality.
+    :param delta_skip: Optional. If provided the loaded table will skip :code:`delta_skip` precomputed grid cells in the :code:`delta` dimension when loading to reduce computer memory usage. This will reduce the interpolation quality.
     :return: A tuple containing :code:`(kvec, interpolation_function)`, where the :code:`interpolation_function` is returned by :py:meth:`scipy.interpolate.RegularGridInterpolator`."""
     
+    # Set up slicing if omega_skip or delta_skip are provided
+    grid_slices = None
+    if omega_skip or delta_skip:
+        # Make slices equivalent to [::omega_skip] or [::delta_skip]
+        oslice = slice(None, None, omega_skip)
+        dslice = slice(None, None, delta_skip)
+        
+        # Make slice equivalent to [:]
+        kslice = slice(None)
+        
+        # Put into tuple
+        grid_slices = (oslice, dslice, kslice)
+    
     # Load table, check it is correct
-    phi, kvec_precomputed, grid = read_bragg_precompute(fname, 0, 0, 0)
+    phi, kvec_precomputed, grid = read_bragg_precompute(fname, 0, 0, 0, grid_slices=grid_slices)
     if grid[0][1] != 'omegas' or grid[1][1] != 'deltas':
         raise ValueError('The provided lookup table must be a 2D grid over omegas and deltas')
     
@@ -193,7 +214,7 @@ def load_fast_bragg_evaluator(fname, n_init, n_bragg, N_bloch):
     # Return the fast Bragg evaluation function
     return fbe
 
-def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_sigma=None, table_modulation_frequency=None, flip_negatives=True):
+def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_sigma=None, table_modulation_frequency=None, flip_negatives=True, omega_skip=None, delta_skip=None):
     """Returns a function that provides similar functionality to the :py:meth:`mwave.integrate.gbragg` function but uses a lookup table for faster evaluation.
     
     For example usage of this function checks against equivalent direct computation methods see :doc:`/examples/using_precompute_tables`.
@@ -206,6 +227,8 @@ def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_
     :param table_sigma: The value of sigma used in the lookup table. This is not directly checked against the precompute table contents, but it is used to check user input to the returned function.
     :param table_modulation_frequency: The value of the modulation frequency used in the lookup table. This is not directly checked against the precompute table contents, but it is used to check user input to the returned function.
     :param flip_negatives: If True the symmetry of the problem is used to interpolate negative provided values of :code:`delta` to the returned function. This means that the precompute table does not need to include negative values of :code:`delta`.
+    :param omega_skip: Optional. If provided the loaded table will skip :code:`omega_skip` precomputed grid cells in the :code:`omega` dimension when loading to reduce computer memory usage. This will reduce the interpolation quality.
+    :param delta_skip: Optional. If provided the loaded table will skip :code:`delta_skip` precomputed grid cells in the :code:`delta` dimension when loading to reduce computer memory usage. This will reduce the interpolation quality.
     :return: A function that utilizes the referenced lookup tables to compute the effect of the Bragg pulse that takes arguments :code:`kvec, k0, sigma, omega, delta, delta_phase, mod_freq=None, mod_phase=0.0`. See :doc:`/examples/using_precompute_tables` for example usage.
     """
     
@@ -228,7 +251,7 @@ def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_
 
     # Load single frequency precompute table
     print('Loading single frequency Bragg precompute table, this could take a while...')
-    kvec_precomp_single, fnc_interp_single = load_lookup_table(single_path, method=method)
+    kvec_precomp_single, fnc_interp_single = load_lookup_table(single_path, method=method, omega_skip=omega_skip, delta_skip=delta_skip)
     print('Precompute table loaded! Performing checks...')
 
     # Check that kvec_precomp can be flipped properly if flip_negatives is True
@@ -243,7 +266,7 @@ def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_
         # Load pre
         # compute table
         print('Loading multifrequency Bragg precompute table, this could take a while...')
-        kvec_precomp_multi, fnc_interp_multi = load_lookup_table(multi_path, method=method)
+        kvec_precomp_multi, fnc_interp_multi = load_lookup_table(multi_path, method=method, omega_skip=omega_skip, delta_skip=delta_skip)
         print('Precompute table loaded! Performing checks...')
 
         # Check that kvec_precomp can be flipped properly if flip_negatives is True
