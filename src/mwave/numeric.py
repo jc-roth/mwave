@@ -280,7 +280,7 @@ class NumericTreeNode:
                 t = op_args[0]
                 
                 # Further consistency checking
-                if t_final - t_init != t:
+                if not np.allclose(t_final - t_init, t):
                     raise RuntimeError('propagation time is inconsistent between nodes and operation')
 
                 # Construct function call and store
