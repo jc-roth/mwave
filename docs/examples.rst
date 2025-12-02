@@ -11,3 +11,4 @@ Examples
    examples/systematic_studies
    examples/single_bragg_matching
    examples/using_precompute_tables
+   examples/splitstep_numeric_interferometer_comparison
