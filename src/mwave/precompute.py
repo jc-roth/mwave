@@ -297,7 +297,7 @@ def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_
             phi_out = fnc_interp((omega, deltas_transformed))
                         
         # Apply phase
-        phi_out *= np.exp(-1j*(delta_phase)*kvec_precomp/2)
+        phi_out *= np.exp(-1j*np.outer(delta_phase,kvec_precomp/2))
         
         # Shift the output states
         Deltan = k0//2
