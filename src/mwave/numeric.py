@@ -2,7 +2,7 @@ import numpy as np
 
 class NumericBraggInterferometer:
     """
-    A class for numerically simulating Bragg interferometers. This class allows for the definition of an interferometer geometry and the numerical propagation of wavefunctions through that geometry.
+    A class for numerically simulating Bragg interferometers. This class allows for the definition of an interferometer geometry and the numerical propagation of wavefunctions through that geometry. See :doc:`examples/numeric_interferometer_usage` for example usage.
     """
 
     def __init__(self, kmin, kmax, distance, kpad = 10, x0=0, t0=0, k0=0):

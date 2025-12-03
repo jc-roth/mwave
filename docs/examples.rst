@@ -12,3 +12,4 @@ Examples
    examples/single_bragg_matching
    examples/using_precompute_tables
    examples/splitstep_numeric_interferometer_comparison
+   examples/numeric_interferometer_usage
