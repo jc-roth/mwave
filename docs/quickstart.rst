@@ -12,7 +12,7 @@ Stable releases of :code:`mwave` can be downloaded from `Github`_ or via:
 
 .. code-block::
 
-   pip install git+https://github.com/jc-roth/mwave@v1.2.0
+   pip install git+https://github.com/jc-roth/mwave@v2.1.0
 
 A first example
 ===============
