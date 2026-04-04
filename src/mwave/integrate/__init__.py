@@ -5,6 +5,14 @@ from scipy.integrate import solve_ivp, trapezoid
 from scipy.optimize import minimize
 from matplotlib import pyplot as plt
 from warnings import warn
+import warnings
+from ._backends import (
+    _preeval_rk4_arrays,
+    _pilot_dt,
+    _rk4_bloch_single_kernel,
+    _rk45_bloch_adaptive,
+    _run_batched,
+)
 
 @jit(nopython=True)
 def bloch_rhs(t, phi, kvec, delta, omega, omega_args, phase, phase_args, transformed=False):
@@ -542,3 +550,300 @@ def kbragg(n0, nf, tfinal, delta, omega, omega_args, phase, phase_args, npad = 1
 if __name__ == "__main__":
     import doctest
     doctest.testmod()
+
+
+# ── Fixed-step RK4 helpers and parallel backends ─────────────────────────────
+
+def _rk4_fixed_run(kvec, phi0, t0, tfinal, delta, omega, omega_args, phase, phase_args,
+                   nsteps):
+    """Run fixed-step RK4 for ``nsteps`` steps and return the final wavefunction.
+
+    Pre-evaluates all arrays then calls :py:func:`_rk4_bloch_single_kernel`.
+
+    :param kvec: Momentum-state grid.
+    :param phi0: Initial wavefunction ``(N,) complex128``.
+    :param t0: Start time.
+    :param tfinal: End time.
+    :param delta: Two-photon detuning.
+    :param omega: Callable ``omega(t, omega_args) -> float``.
+    :param omega_args: Extra arguments for ``omega``.
+    :param phase: Callable ``phase(t, phase_args) -> float``.
+    :param phase_args: Extra arguments for ``phase``.
+    :param nsteps: Number of fixed RK4 steps.
+    :returns: Final wavefunction ``(N,) complex128``.
+    """
+    h      = (tfinal - t0) / nsteps
+    arrays = _preeval_rk4_arrays(kvec, t0, nsteps, h, omega, omega_args, phase, phase_args)
+    phi    = phi0.copy()
+    _rk4_bloch_single_kernel(phi, 1.0, h, *arrays, delta, delta * t0)
+    return phi
+
+
+def bloch_rk4(kvec, phi0, tfinal, delta, omega_envelope, omega_args, omegas,
+              phase, phase_args,
+              t0=0.0, tol=1e-6, max_halvings=6, pilot_rtol=1e-8,
+              backend='python', cache=None):
+    """Integrate the Bloch Hamiltonian for a batch of atoms with a selectable
+    parallel backend.
+
+    The Rabi frequency is factored as
+    ``omega_envelope(t, omega_args) * omegas[i]`` — a shared time-envelope
+    times a per-atom scalar — so all backends can parallelise over atoms while
+    sharing pre-evaluated envelope and phase arrays.
+
+    **Backends**
+
+    - ``'python'`` *(default)*: Numba ``@njit(parallel=True)`` with ``prange``
+      over atoms.  No external dependencies.
+    - ``'cpp'``: C++ OpenMP kernel compiled via ``g++`` on first use (result
+      cached per state-space size ``N``).  Uses float32 for phi/kin arrays,
+      float64 for the detuning-phase accumulator.  Requires ``g++`` with OpenMP.
+    - ``'gpu'``: CUDA kernel compiled via CuPy on first use (cached per ``N``).
+      Same float32/float64 split as ``'cpp'``.  Requires CuPy and a CUDA GPU.
+    - ``'metal'``: Metal compute kernel compiled via ``metalcompute`` on first
+      use (cached per ``N``).  Targets Apple Silicon GPUs.  Detuning-phase
+      arrays are computed on the CPU in float64 and transferred as float32;
+      all other shader arithmetic is float32 (Apple Silicon Metal does not
+      support native float64).  Requires the ``metalcompute`` package and
+      macOS with an Apple Silicon or other Metal-capable GPU.
+
+    **Step-size selection**
+
+    - ``'python'`` backend: adaptive Dormand-Prince RK45.  No pilot is needed;
+      the step size is controlled step-by-step so the local error satisfies
+      ``max|err| <= tol * h / (tfinal - t0)``, bounding the global error to
+      ``tol``.
+    - ``'cpp'`` / ``'gpu'`` / ``'metal'`` backends: pilot ``RK45`` on a cheap
+      3-state system gives an initial ``dt``; Richardson extrapolation (coarse
+      at ``nsteps``, fine at ``2*nsteps``) verifies convergence, doubling up
+      to ``max_halvings`` times.
+
+    :param kvec: Momentum-state grid ``(N,) float64``.
+    :param phi0: Initial wavefunction.  ``(natoms, N) complex128`` for batch
+        mode, or ``(N,) complex128`` for single-atom mode (result is squeezed
+        back to ``(N,)`` for backward compatibility).
+    :param tfinal: Final integration time.
+    :param delta: Per-atom two-photon detuning — ``(natoms,) float64`` or
+        scalar (broadcast in single-atom mode).
+    :param omega_envelope: Callable ``omega_envelope(t, omega_args) -> float``
+        — shared pulse-envelope shape (same for all atoms).
+    :param omega_args: Extra arguments forwarded to ``omega_envelope``.
+    :param omegas: Per-atom Rabi frequency scale — ``(natoms,) float64`` or
+        scalar in single-atom mode.
+    :param phase: Callable ``phase(t, phase_args) -> float`` — shared phase
+        modulation (same for all atoms).
+    :param phase_args: Extra arguments forwarded to ``phase``.
+    :param t0: Integration start time (default ``0.0``).
+    :param tol: Maximum acceptable error (default ``1e-6``).
+    :param max_halvings: Maximum Richardson halvings for ``'cpp'``/``'gpu'``/
+        ``'metal'`` backends (default ``6``).
+    :param pilot_rtol: Relative tolerance for the pilot RK45 used by the
+        ``'cpp'``/``'gpu'``/``'metal'`` backends (default ``1e-8``).
+    :param backend: ``'python'`` (default), ``'cpp'``, ``'gpu'``, or
+        ``'metal'``.
+    :param cache: Optional ``dict`` for memoising results keyed on
+        ``(phi0.tobytes(), deltas.tobytes(), t0, tfinal)``.
+    :returns: ``(phi_final, dt_used, error_est)`` where ``phi_final`` is
+        ``(natoms, N)`` in batch mode or ``(N,)`` in single-atom mode.
+    :raises RuntimeWarning: If the adaptive step limit is reached (python) or
+        ``tol`` is not met within ``max_halvings`` halvings (cpp/gpu/metal).
+    """
+    # ── Input normalisation ───────────────────────────────────────────────────
+    scalar_input = (np.ndim(phi0) == 1)
+    if scalar_input:
+        phi0   = np.asarray(phi0,   dtype=np.complex128)[np.newaxis, :]
+        delta  = np.atleast_1d(np.asarray(delta,  dtype=np.float64))
+        omegas = np.atleast_1d(np.asarray(omegas, dtype=np.float64))
+    else:
+        phi0   = np.asarray(phi0,   dtype=np.complex128)
+        delta  = np.asarray(delta,  dtype=np.float64)
+        omegas = np.asarray(omegas, dtype=np.float64)
+
+    if cache is not None:
+        cache_key = (phi0.tobytes(), delta.tobytes(), float(t0), float(tfinal))
+        if cache_key in cache:
+            return cache[cache_key]
+
+    # ── Python backend: adaptive RK45 (no pilot, no Richardson) ──────────────
+    if backend == 'python':
+        phi_all, dt_used, error_est = _rk45_bloch_adaptive(
+            phi0, omegas, delta, t0, tfinal,
+            omega_envelope, omega_args, phase, phase_args, kvec, tol)
+        phi_out = phi_all[0] if scalar_input else phi_all
+        result  = phi_out, dt_used, error_est
+        if cache is not None:
+            cache[cache_key] = result
+        return result
+
+    # ── cpp / gpu / metal backends: pilot + fixed-step Richardson ───────────
+    delta_worst = float(np.max(np.abs(delta)))
+    max_omega   = float(np.max(np.abs(omegas)))
+
+    def _scaled_envelope(t, args):
+        return max_omega * float(omega_envelope(t, args))
+
+    dt_pilot = _pilot_dt(t0, tfinal, delta_worst, _scaled_envelope, omega_args,
+                         phase, phase_args, pilot_rtol)
+    nsteps   = max(int(np.ceil((tfinal - t0) / dt_pilot)), 1)
+
+    # ── Coarse integration ────────────────────────────────────────────────────
+    h      = (tfinal - t0) / nsteps
+    arrays = _preeval_rk4_arrays(kvec, t0, nsteps, h,
+                                  omega_envelope, omega_args, phase, phase_args)
+    env_full, env_half, eph_full, eph_half, kinp_full, kinm_full, kinp_half, kinm_half = arrays
+
+    phi_coarse = _run_batched(backend, phi0, delta, omegas, h, t0,
+                              env_full, env_half, eph_full, eph_half,
+                              kinp_full, kinm_full, kinp_half, kinm_half)
+    error_est = np.inf
+
+    for _ in range(max_halvings + 1):
+        nsteps *= 2
+        h       = (tfinal - t0) / nsteps
+        arrays  = _preeval_rk4_arrays(kvec, t0, nsteps, h,
+                                       omega_envelope, omega_args, phase, phase_args)
+        env_full, env_half, eph_full, eph_half, kinp_full, kinm_full, kinp_half, kinm_half = arrays
+        phi_fine  = _run_batched(backend, phi0, delta, omegas, h, t0,
+                                 env_full, env_half, eph_full, eph_half,
+                                 kinp_full, kinm_full, kinp_half, kinm_half)
+        error_est = float(np.max(np.abs(phi_coarse - phi_fine))) / 15.0
+        if error_est <= tol:
+            phi_out = phi_fine[0] if scalar_input else phi_fine
+            result  = phi_out, (tfinal - t0) / nsteps, error_est
+            if cache is not None:
+                cache[cache_key] = result
+            return result
+        phi_coarse = phi_fine
+
+    warnings.warn(
+        f"bloch_rk4: tol={tol} not met after {max_halvings} halvings "
+        f"(error_est={error_est:.2e}); returning best result.",
+        RuntimeWarning, stacklevel=2,
+    )
+    phi_out = phi_fine[0] if scalar_input else phi_fine
+    result  = phi_out, (tfinal - t0) / nsteps, error_est
+    if cache is not None:
+        cache[cache_key] = result
+    return result
+
+
+# ── Backend benchmark ─────────────────────────────────────────────────────────
+
+def score_backends(n0=0, nf=5, natoms=8, tol=1e-6, repeat=3):
+    """Benchmark all available ``bloch_rk4`` backends and return a ranked table.
+
+    Runs a fixed Gaussian-pulse Bragg scenario (5ℏk, ``natoms`` atoms) through
+    each backend, measures wall-clock time (best of ``repeat`` runs), and
+    verifies that the result agrees with the ``'python'`` backend to within
+    ``1e-3``.  Backends whose dependencies are missing are listed as
+    ``'unavailable'``.
+
+    The function prints a human-readable table and returns a list of dicts
+    sorted by wall-clock time (fastest first):
+
+    .. code-block:: python
+
+        [{'backend': 'metal',  'time_s': 0.031, 'max_err': 2.1e-05, 'status': 'ok'},
+         {'backend': 'cpp',    'time_s': 0.14,  'max_err': 8.3e-06, 'status': 'ok'},
+         {'backend': 'python', 'time_s': 0.52,  'max_err': 0.0,     'status': 'ok'},
+         {'backend': 'gpu',    'time_s': None,   'max_err': None,    'status': 'unavailable'}]
+
+    :param n0: Lower momentum-state order (default ``0``).
+    :param nf: Upper momentum-state order (default ``5``).
+    :param natoms: Number of atoms in the benchmark batch (default ``8``).
+    :param tol: Integration tolerance passed to ``bloch_rk4`` (default ``1e-6``).
+    :param repeat: Number of timed repetitions per backend; the minimum is used
+        (default ``3``).
+    :returns: List of result dicts sorted by ``time_s`` (``None`` last).
+    """
+    import time as _time
+
+    kvec, phi0, tfinal, delta, omega_args, phase_args = _score_setup(n0, nf)
+    deltas  = np.linspace(delta * 0.98, delta * 1.02, natoms)
+    omegas  = np.ones(natoms)
+    phi0b   = np.tile(phi0[np.newaxis, :], (natoms, 1))
+
+    # Reference: python backend (always available)
+    phi_ref, _, _ = bloch_rk4(
+        kvec, phi0b, tfinal, deltas,
+        omega_fnc_gaussian, omega_args, omegas,
+        phase_fnc_constant, phase_args,
+        tol=tol, backend='python',
+    )
+
+    results = []
+    for backend in ('python', 'cpp', 'gpu', 'metal'):
+        # Warm-up: compile/JIT on first call so timing reflects steady-state.
+        try:
+            bloch_rk4(
+                kvec, phi0b, tfinal, deltas,
+                omega_fnc_gaussian, omega_args, omegas,
+                phase_fnc_constant, phase_args,
+                tol=tol, backend=backend,
+            )
+        except Exception as exc:
+            results.append({'backend': backend, 'time_s': None,
+                            'max_err': None, 'status': 'unavailable',
+                            'error': str(exc)})
+            continue
+
+        # Timed runs
+        best_t = float('inf')
+        for _ in range(repeat):
+            t0_ = _time.perf_counter()
+            phi_out, _, _ = bloch_rk4(
+                kvec, phi0b, tfinal, deltas,
+                omega_fnc_gaussian, omega_args, omegas,
+                phase_fnc_constant, phase_args,
+                tol=tol, backend=backend,
+            )
+            best_t = min(best_t, _time.perf_counter() - t0_)
+
+        max_err = float(np.max(np.abs(phi_out - phi_ref)))
+        status  = 'ok' if max_err < 1e-3 else f'MISMATCH (err={max_err:.2e})'
+        results.append({'backend': backend, 'time_s': best_t,
+                        'max_err': max_err, 'status': status, 'error': None})
+
+    # bloch (DOP853 reference) — single-atom only, compared against phi_ref[0]
+    phi_ref1 = phi_ref[0]  # single-atom slice from the python reference
+    best_t = float('inf')
+    for _ in range(repeat):
+        t0_ = _time.perf_counter()
+        sol = bloch(kvec, phi0, tfinal, deltas[0],
+                    omega_fnc_gaussian, omega_args,
+                    phase_fnc_constant, phase_args)
+        best_t = min(best_t, _time.perf_counter() - t0_)
+    phi_bloch = sol.y[:, -1]
+    max_err = float(np.max(np.abs(phi_bloch - phi_ref1)))
+    status  = 'ok' if max_err < 1e-3 else f'MISMATCH (err={max_err:.2e})'
+    results.append({'backend': 'bloch(1)', 'time_s': best_t,
+                    'max_err': max_err, 'status': status, 'error': None})
+
+    # Sort: available (by time) before unavailable
+    results.sort(key=lambda r: (r['time_s'] is None, r['time_s'] or 0))
+
+    # Print table
+    print(f"bloch_rk4 backend benchmark  (natoms={natoms}, tol={tol}, best of {repeat})")
+    print(f"  bloch uses DOP853, single atom only")
+    hdr = f"  {'backend':<10}  {'time (s)':>10}  {'max_err':>10}  status"
+    print(hdr)
+    print('  ' + '-' * (len(hdr) - 2))
+    for r in results:
+        t_str = f"{r['time_s']:.4f}" if r['time_s'] is not None else '—'
+        e_str = f"{r['max_err']:.2e}" if r['max_err'] is not None else '—'
+        print(f"  {r['backend']:<10}  {t_str:>10}  {e_str:>10}  {r['status']}")
+
+    return results
+
+
+def _score_setup(n0, nf):
+    """Return (kvec, phi0, tfinal, delta, omega_args, phase_args) for scoring."""
+    kvec, _, _ = make_kvec(n0, nf)
+    phi0       = make_phi(kvec, n0)
+    sigma      = 0.188
+    omega_peak = 30.0
+    delta      = float(4 * (n0 + nf))
+    tfinal     = 6.0 * sigma
+    omega_args = np.array([omega_peak, sigma, tfinal / 2.0])
+    phase_args = np.array([0.0])
+    return kvec, phi0, tfinal, delta, omega_args, phase_args
