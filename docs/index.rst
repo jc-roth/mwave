@@ -1,18 +1,27 @@
-.. mwave documentation master file, created by
-   sphinx-quickstart on Sat May 25 16:21:19 2024.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+mwave documentation
+===================
+
+A package for simulating atom interferometers, combining symbolic phase calculations with numerical Bragg pulse integration.
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
-   :glob:
+   :caption: Getting Started
 
    quickstart
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Examples
+
    examples
-   integration_utils
+
+.. toctree::
+   :maxdepth: 2
+   :caption: API Reference
+
    symbolic
    numeric
+   integration_utils
 
 Indices and tables
 ==================
