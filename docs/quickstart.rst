@@ -12,7 +12,7 @@ Stable releases of :code:`mwave` can be downloaded from `Github`_ or via:
 
 .. code-block::
 
-   pip install git+https://github.com/jc-roth/mwave@v2.1.0
+   pip install git+https://github.com/jc-roth/mwave@v3.0.0
 
 A first example
 ===============
@@ -118,7 +118,9 @@ See the `Interferometer Geometries`_ section for more in-depth examples of how t
 Simulating Bragg beamsplitters
 ------------------------------
 
-Next we can use the :py:meth:`mwave.integrate.gbragg` function to integrate some initial momentum state through a Bragg diffraction beamsplitter and mirror. We will just eyeball the effective Rabi frequencies for each
+Next we can use the :py:func:`mwave.integrate.propagate` function to integrate some initial momentum state through a Bragg diffraction beamsplitter and mirror. We will just eyeball the effective Rabi frequencies for each.
+
+:py:func:`~mwave.integrate.propagate` takes the momentum grid, initial state, final time, two-photon detuning, and callable functions for the Rabi envelope and drive phase. For a Gaussian pulse we use the built-in :py:func:`~mwave.integrate.omega_fnc_gaussian` and :py:func:`~mwave.integrate.phase_fnc_constant`.
 
 .. code:: ipython3
 
@@ -126,24 +128,37 @@ Next we can use the :py:meth:`mwave.integrate.gbragg` function to integrate some
     sigma = 0.5
     omega_bs = 16.1
     omega_mirror = 21
-    kvec, n0_idx, nf_idx = mint.make_kvec(n0,nf)
-    
-    sol = mint.gbragg(kvec, mint.make_phi(kvec, n0), 6*sigma, 4*(n0+nf), omega_bs, sigma)
-    mint.pops_vs_time(kvec, sol.t, sol.y.T)
-    plt.show()
-    
-    sol = mint.gbragg(kvec, mint.make_phi(kvec, n0), 6*sigma, 4*(n0+nf), omega_mirror, sigma)
-    mint.pops_vs_time(kvec, sol.t, sol.y.T)
+    kvec, n0_idx, nf_idx = mint.make_kvec(n0, nf)
+
+    # Simulate beamsplitter (pi/2 pulse)
+    result = mint.propagate(kvec, mint.make_phi(kvec, n0), 6*sigma, 4*(n0+nf),
+                            mint.omega_fnc_gaussian, np.array([omega_bs, sigma, 3*sigma]),
+                            mint.phase_fnc_constant, np.array([0.0]))
+    result.plot()
     plt.show()
 
+    # Simulate mirror (pi pulse)
+    result = mint.propagate(kvec, mint.make_phi(kvec, n0), 6*sigma, 4*(n0+nf),
+                            mint.omega_fnc_gaussian, np.array([omega_mirror, sigma, 3*sigma]),
+                            mint.phase_fnc_constant, np.array([0.0]))
+    result.plot()
+    plt.show()
 
+The :py:meth:`~mwave.integrate.PropagateResult.plot` method produces a three-panel figure showing the population in each momentum state, the Rabi frequency profile, and the drive phase as a function of time.
+
+.. note::
+
+   The plots shown here may need to be regenerated after updating to the latest API.
 
 .. image:: static/output_16_0.png
 
-
-
 .. image:: static/output_16_1.png
 
+The population at any specific momentum state can also be queried with :py:meth:`~mwave.integrate.PropagateResult.population`:
+
+.. code:: ipython3
+
+    print(f"Population in n={nf}: {result.population(2*nf):.4f}")
 
 That seems to have worked well enough!
 
@@ -154,34 +169,38 @@ See the `Integrating the Bloch Hamiltonian`_ section for other examples of evolv
 Combining the interferometer model with simulation
 --------------------------------------------------
 
-Lets say that we want to study the systematics introduced by the Bragg diffraction process in our Mach-Zender geometry. To do this we need to combine the numerical computation we've made using :py:meth:`mwave.integrate.gbragg` with our symbolic representation of the interferometer geometry. This is accomplished in a straightforward way by defining custom :py:class:`mwave.symbolic.Unitary` classes that inherit from the :py:class:`mwave.symbolic.Beamsplitter` and :py:class:`mwave.symbolic.Mirror` classes.
+Lets say that we want to study the systematics introduced by the Bragg diffraction process in our Mach-Zender geometry. To do this we need to combine the numerical computation we've made using :py:func:`mwave.integrate.propagate` with our symbolic representation of the interferometer geometry. This is accomplished in a straightforward way by defining custom :py:class:`mwave.symbolic.Unitary` classes that inherit from the :py:class:`mwave.symbolic.Beamsplitter` and :py:class:`mwave.symbolic.Mirror` classes.
 
 Our beamsplitters will couple momentum states :math:`0` and :math:`n`
 
 .. code:: ipython3
 
     class BraggBeamsplitter(msym.Beamsplitter):
-    
+
         def gen_numeric(self, node, subs={}):
             delta = msym.eval_sympy_var(self.delta, subs)
             kvec, _, _ = mint.make_kvec(msym.eval_sympy_var(self.n1, subs), msym.eval_sympy_var(self.n2, subs))
-            n_idx = np.argmin(np.abs(2*msym.eval_sympy_var(node.n,subs) - kvec))
-            n_parent = msym.eval_sympy_var(node.parent.n,subs)
+            n_idx = np.argmin(np.abs(2*msym.eval_sympy_var(node.n, subs) - kvec))
+            n_parent = msym.eval_sympy_var(node.parent.n, subs)
             def fnc(v):
-                sol = mint.gbragg(kvec, mint.make_phi(kvec, n_parent), 2*3*sigma, delta + 4*v, omega_bs, sigma)
-                return sol.y[n_idx,-1]
+                result = mint.propagate(kvec, mint.make_phi(kvec, n_parent), 6*sigma, delta + 4*v,
+                                        mint.omega_fnc_gaussian, np.array([omega_bs, sigma, 3*sigma]),
+                                        mint.phase_fnc_constant, np.array([0.0]))
+                return result.phi_final[n_idx]
             return fnc
-    
+
     class BraggMirror(msym.Mirror):
-    
+
         def gen_numeric(self, node, subs={}):
             delta = msym.eval_sympy_var(self.delta, subs)
             kvec, _, _ = mint.make_kvec(msym.eval_sympy_var(self._n1, subs), msym.eval_sympy_var(self._n2, subs))
-            n_idx = np.argmin(np.abs(2*msym.eval_sympy_var(node.n,subs) - kvec))
-            n_parent = msym.eval_sympy_var(node.parent.n,subs)
+            n_idx = np.argmin(np.abs(2*msym.eval_sympy_var(node.n, subs) - kvec))
+            n_parent = msym.eval_sympy_var(node.parent.n, subs)
             def fnc(v):
-                sol = mint.gbragg(kvec, mint.make_phi(kvec, n_parent), 2*3*sigma, delta + 4*v, omega_mirror, sigma)
-                return sol.y[n_idx,-1]
+                result = mint.propagate(kvec, mint.make_phi(kvec, n_parent), 6*sigma, delta + 4*v,
+                                        mint.omega_fnc_gaussian, np.array([omega_mirror, sigma, 3*sigma]),
+                                        mint.phase_fnc_constant, np.array([0.0]))
+                return result.phi_final[n_idx]
             return fnc
 
 Now we can define new unitary operators using these definitions and
@@ -275,50 +294,50 @@ that contribute to this numerical calculation. To help with this :code:`mwave` p
     print(ifr.generate_code_outline(port_dict))
 
 
-.. parsed-literal::
+.. code-block:: python
 
     def args_lookup(x, y, v):
         return (np.ones_like(x), )
-    
+
     def bs(ni, nf, *args):
         if ni == nf:
             return (0.5+0j)*args[0]
         else:
             return (0+0.5j)*args[0]
-    
+
     def calc_populations(x0, y0, v0, ncopies):
-        
+
         # Compute the ones array
         ones = np.ones(ncopies)
-    
+
         # Compute positions at each beamsplitter
         x1, y1 = x0 + vx*T, y0 + vy*T
         x2, y2 = x1 + vx*T, y1 + vy*T
-        
+
         # Compute velocity at each beamsplitter
         v1 = v0
         v2 = v1
-        
+
         # Compute arguments at each beamsplitter
         args0 = args_lookup(x0, y0, v0)
         args1 = args_lookup(x1, y1, v1)
         args2 = args_lookup(x2, y2, v2)
-        
+
         # Compute wavefunctions
         portlower_1 = bs(0,0,*args0)*bs(0,n,*args1)*bs(n,0,*args2)
         portlower_2 = bs(0,n,*args0)*bs(n,0,*args1)*bs(0,0,*args2)
-        
+
         portupper_1 = bs(0,0,*args0)*bs(0,n,*args1)*bs(n,n,*args2)
         portupper_2 = bs(0,n,*args0)*bs(n,0,*args1)*bs(0,n,*args2)
-        
+
         # Interfere
         portlower = np.einsum('i,j->ij', portlower_1, ones) + np.einsum('i,j->ij', portlower_2, ones)
         portupper = np.einsum('i,j->ij', portupper_1, ones) + np.einsum('i,j->ij', portupper_2, ones)
-        
+
         # Compute populations
         poplower = np.sum(np.abs(portlower)**2, axis=0)
         popupper = np.sum(np.abs(portupper)**2, axis=0)
-        
+
         # Return
         return poplower, popupper
 
