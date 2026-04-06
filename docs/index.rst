@@ -11,6 +11,12 @@ A package for simulating atom interferometers, combining symbolic phase calculat
 
 .. toctree::
    :maxdepth: 2
+   :caption: Guides
+
+   backends
+
+.. toctree::
+   :maxdepth: 2
    :caption: Examples
 
    examples
