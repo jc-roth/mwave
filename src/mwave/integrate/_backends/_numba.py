@@ -1,9 +1,9 @@
-"""Python/Numba backend for bloch_rk4.
+"""Numba backend for :py:func:`mwave.integrate.propagate`.
 
 Contains:
 - Fixed-step RK4 single-atom kernel          (_rk4_bloch_single_kernel)
 - Fixed-step RK4 batched kernel (prange)      (_rk4_bloch_batched_kernel)
-- Warm-up helpers                             (_bloch_python_warmup, _ensure_bloch_python)
+- Warm-up helpers                             (_bloch_numba_warmup, _ensure_bloch_numba)
 - Dormand-Prince RK45 step kernel             (_rk45_dp_step)
 - Adaptive RK45 driver                        (_rk45_bloch_adaptive)
 """
@@ -216,7 +216,7 @@ def _rk4_bloch_batched_kernel(phi_all, omegas, h,
         phi_all[i] = phi
 
 
-def _bloch_python_warmup():
+def _bloch_numba_warmup():
     na, N_, ns = 2, 3, 2
     phi_w  = np.zeros((na, N_), dtype=np.complex128)
     phi_w[:, 1] = 1.0
@@ -240,19 +240,19 @@ def _bloch_python_warmup():
                                kpf_w, kmf_w, kph_w, kmh_w, dl_w, dp_w)
 
 
-_bloch_python_warmed = False
+_bloch_numba_warmed = False
 
 
-def _ensure_bloch_python():
-    global _bloch_python_warmed
-    if not _bloch_python_warmed:
-        _bloch_python_warmup()
-        _bloch_python_warmed = True
+def _ensure_bloch_numba():
+    global _bloch_numba_warmed
+    if not _bloch_numba_warmed:
+        _bloch_numba_warmup()
+        _bloch_numba_warmed = True
 
 
 # ── Adaptive RK45 (Dormand-Prince) ────────────────────────────────────────────
 #
-# Replaces the pilot + fixed-step Richardson loop when backend='python'.
+# Replaces the pilot + fixed-step Richardson loop when backend='numba'.
 # A single pass with embedded error control avoids the pilot entirely and
 # takes very few steps in regions where the coupling is small (e.g. Gaussian
 # pulse tails), while automatically refining near the pulse peak.
@@ -414,7 +414,7 @@ def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
                           kvec, tol):
     """Adaptive Dormand-Prince RK45 integration of the batched Bloch equation.
 
-    Replaces the pilot + fixed-step Richardson loop for the ``'python'``
+    Replaces the pilot + fixed-step Richardson loop for the ``'numba'``
     backend.  Step size is controlled so that the local error satisfies
     ``max|phi_err| <= tol * h / (tfinal - t0)``, which bounds the accumulated
     global error to ``tol``.
@@ -496,7 +496,7 @@ def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
 
     else:
         warnings.warn(
-            "bloch_rk4 adaptive: step limit reached before tfinal; "
+            "propagate (numba): step limit reached before tfinal; "
             "result may not satisfy tol.",
             RuntimeWarning, stacklevel=3,
         )

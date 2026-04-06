@@ -1,22 +1,23 @@
-"""Backend implementations for :py:func:`mwave.integrate.bloch_rk4`.
+"""Backend implementations for :py:func:`mwave.integrate.propagate`.
 
-Three parallel backends share pre-evaluated envelope/phase/kinematic arrays and
-differ only in how the inner RK4 loop is parallelised over atoms:
-
-- ``'python'`` — Numba ``@njit(parallel=True)`` with ``prange``  (no external deps)
+- ``'scipy'``  — adaptive ``solve_ivp`` (single-atom only, supports dense output)
+- ``'numba'``  — Numba ``@njit(parallel=True)`` with ``prange``  (no external deps)
 - ``'cpp'``    — C++ OpenMP, compiled via g++ on first use, cached per N
 - ``'gpu'``    — CUDA via CuPy, compiled via NVRTC on first use, cached per N
+- ``'metal'``  — Metal compute, compiled via metalcompute on first use, cached per N
 """
 
 import ctypes as _ctypes
 import numpy as np
 from scipy.integrate import solve_ivp
 
-from ._python import (
+from ._scipy import _run_scipy
+
+from ._numba import (
     _rk4_bloch_single_kernel,
     _rk4_bloch_batched_kernel,
-    _bloch_python_warmup,
-    _ensure_bloch_python,
+    _bloch_numba_warmup,
+    _ensure_bloch_numba,
     _rk45_dp_step,
     _rk45_bloch_adaptive,
 )
@@ -144,8 +145,8 @@ def _run_batched(backend, phi0, deltas, omegas, h, t0,
     natoms, N = phi0.shape
     nsteps    = env_half.shape[0]
 
-    if backend == 'python':
-        _ensure_bloch_python()
+    if backend == 'numba':
+        _ensure_bloch_numba()
         phi_all           = phi0.copy()
         delta_phase_inits = deltas * t0
         _rk4_bloch_batched_kernel(
@@ -270,5 +271,5 @@ def _run_batched(backend, phi0, deltas, omegas, h, t0,
 
     else:
         raise ValueError(
-            f"bloch_rk4: unknown backend {backend!r}; "
-            "choose 'python', 'cpp', 'gpu', or 'metal'")
+            f"propagate: unknown backend {backend!r}; "
+            "choose 'numba', 'cpp', 'gpu', or 'metal'")
