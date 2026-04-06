@@ -18,11 +18,3 @@ The :py:mod:`mwave.simulation_utils` module provides helpers for initializing at
 
 .. automodule:: mwave.simulation_utils
    :members:
-
-Precompute module
-=================
-
-The :py:mod:`mwave.precompute` module provides tools for generating and loading precomputed Bragg pulse lookup tables, trading disk space for faster simulation of large atom ensembles.
-
-.. automodule:: mwave.precompute
-   :members:

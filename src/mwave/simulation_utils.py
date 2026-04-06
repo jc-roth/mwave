@@ -75,12 +75,9 @@ def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d,
     :return: The x and y values of the ellipse. These will have the same length as the provided vector :code:`phi_c`.
     
     .. code-block:: python
-    
+
         import numpy as np
-        from mwave.precompute import load_fast_bragg_evaluator
         from mwave.simulation_utils import cloud_to_scrbi_ellipse_xy
-        from alphautil.analysis import fit_ellipse_coeff
-        from alphautil.ellipse import get_sci_params
         from matplotlib import pyplot as plt
 
         np.random.seed(13703599)
@@ -99,39 +96,32 @@ def cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, vz, T, Tp, n, N, phi_c, phi_d,
         Omega0 = 32
         w0 = 10e-3
 
-        n_init = 0
         n_bragg = 5
         N_bloch = 100
 
-        bragglookup = load_fast_bragg_evaluator('sig0.260.h5', n_init, n_bragg, N_bloch)
+        # bragglookup must be a callable accepting (ni, nf, omega, delta)
+        def bragglookup(ni, nf, omega, delta):
+            ...  # user-defined Bragg pulse computation
 
         def omegalookup(x, y, z):
             return Omega0*np.exp(-2*(x**2 + y**2)/(w0**2))
 
-        # (l)ocal (p)hase (lookup)
         def lplookup(x, y, z):
             wavelen = 852e-9
             zR = np.pi*w0**2/wavelen
             kk = 2*np.pi/wavelen
             return kk*(x**2 + y**2)/(2*zR)
-            
+
         def deltalookup(v, n_bragg):
-            return 4*n_bragg + 4*(v/0.0035) # The modification to delta is 4 times the velocity defined in units of recoil velocities
+            return 4*n_bragg + 4*(v/0.0035)
 
         x, y = cloud_to_scrbi_ellipse_xy(x0, y0, z0, vx, vy, v0, T, Tp, n_bragg, N_bloch, np.exp(1j*phi_c), np.exp(1j*phi_d), bragglookup, omegalookup, lplookup, deltalookup)
-
-        coeff = fit_ellipse_coeff(x, y)
-        bx, by, Ax, Ay, phi_d_fit = get_sci_params(coeff)
 
         plt.scatter(x, y)
         plt.ylim([-1,1])
         plt.xlim([-1,1])
         plt.gca().set_aspect('equal')
         plt.show()
-
-        print('differential phase fit error=%0.3f mRad' % ((phi_d - phi_d_fit)*1e3))
-        print(Ax)
-        print(Ay)
     """
 
     # Compute the ones array

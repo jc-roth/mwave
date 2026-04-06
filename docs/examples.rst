@@ -18,7 +18,6 @@ Numeric simulations
 
    examples/numeric_interferometer_usage
    examples/splitstep_numeric_interferometer_comparison
-   examples/using_precompute_tables
 
 Advanced / Systematics
 ----------------------
