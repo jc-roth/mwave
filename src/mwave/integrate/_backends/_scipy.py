@@ -3,14 +3,91 @@
 Provides adaptive ODE integration via :func:`scipy.integrate.solve_ivp`.
 Single-atom only.  Supports dense output, the transformed frame, and
 density-matrix evolution with single-photon scattering.
+
+This module also defines the right-hand-side functions used by
+``solve_ivp``: :py:func:`_wf_rhs` for wavefunction evolution and
+:py:func:`_rho_rhs` for density-matrix evolution. See the
+``Integration backends`` page in the documentation for the equations
+being integrated.
 """
 
 import numpy as np
+from numba import jit
 from scipy.integrate import solve_ivp
 
 
+@jit(nopython=True)
+def _wf_rhs(t, phi, kvec, delta, omega, omega_args, phase, phase_args,
+            omega_scale=1.0, transformed=False):
+    """Schrodinger-equation RHS for the Bragg-Bloch Hamiltonian.
+
+    Returns :math:`d\\phi/dt` evaluated at time *t* for the wavefunction
+    *phi* defined on the momentum grid *kvec*. See the documentation for
+    the explicit form of the equation.
+    """
+    # Compute phi_p1 and phi_m1 (plus and minus 1)
+    phi_p1 = np.zeros_like(phi)
+    phi_p1[:-1] = phi[1:]
+    phi_m1 = np.zeros_like(phi)
+    phi_m1[1:] = phi[:-1]
+
+    # Compute Rabi frequency and phase at current time
+    oval = omega(t, omega_args) * omega_scale
+    phaseval = phase(t, phase_args)
+
+    # Compute RHS of ODE
+    if not transformed:
+        return 1j*oval/2*(np.exp(1j*(delta*t+phaseval))*np.exp(1j*(-4*kvec-4)*t)*phi_p1 + np.exp(-1j*(delta*t+phaseval))*np.exp(1j*(4*kvec-4)*t)*phi_m1)
+
+    # Compute RHS of ODE in transformed frame
+    return -1j*phi*kvec**2 + 1j*oval/2*(np.exp(1j*(delta*t+phaseval))*phi_p1 + np.exp(-1j*(delta*t+phaseval))*phi_m1)
+
+
+@jit(nopython=True)
+def _rho_rhs(t, rho, nstates, hkvec, vkvec, loss_mat, delta, omega, omega_args,
+             phase, phase_args, omega_scale=1.0):
+    """Von Neumann RHS for the Bragg-Bloch Hamiltonian with single-photon
+    scattering loss.
+
+    Returns :math:`d\\rho/dt` for the density matrix *rho* (passed as a
+    flattened vector for compatibility with ``solve_ivp``). See the
+    documentation for the explicit form of the equation.
+    """
+    # Compute Rabi frequency and phase at current time
+    oval = omega(t, omega_args) * omega_scale
+    phaseval = phase(t, phase_args)
+
+    # Reshape rho into matrix
+    rho_mat = np.reshape(rho, (nstates, nstates))
+
+    # Create shifted matrices
+    sr = np.zeros_like(rho_mat)
+    sr[1:,:] = rho_mat[:-1,:]
+
+    sl = np.zeros_like(rho_mat)
+    sl[:-1,:] = rho_mat[1:,:]
+
+    su = np.zeros_like(rho_mat)
+    su[:,:-1] = rho_mat[:,1:]
+
+    sd = np.zeros_like(rho_mat)
+    sd[:,1:] = rho_mat[:,:-1]
+
+    # Compute each term in the RHS
+    term1 = 1j*oval/2*np.exp(1j*(delta*t+phaseval))*np.exp(1j*(-4*vkvec-4)*t)*sl
+    term2 = 1j*oval/2*np.exp(-1j*(delta*t+phaseval))*np.exp(1j*(4*vkvec-4)*t)*sr
+    term3 = -1j*oval/2*np.exp(1j*(delta*t+phaseval))*np.exp(1j*(-4*hkvec+4)*t)*sd
+    term4 = -1j*oval/2*np.exp(-1j*(delta*t+phaseval))*np.exp(1j*(4*hkvec+4)*t)*su
+
+    # Complete making RHS
+    rho_mat_out = term1 + term2 + term3 + term4 + loss_mat*rho_mat
+
+    # Reshape and return
+    return np.reshape(rho_mat_out, nstates**2)
+
+
 def _run_scipy(kvec, phi0, t0, tfinal, delta, omega, omega_args,
-               phase, phase_args, omega_scale, bloch_rhs, bloch_density_rhs,
+               phase, phase_args, omega_scale,
                method='DOP853', atol=1e-10, rtol=1e-10, dense=False,
                max_step=0.1, transformed=False, Gamma_sps=None):
     """Integrate via scipy ``solve_ivp``.
@@ -25,8 +102,6 @@ def _run_scipy(kvec, phi0, t0, tfinal, delta, omega, omega_args,
     :param phase: Callable ``phase(t, phase_args) -> float``.
     :param phase_args: Extra arguments for *phase*.
     :param omega_scale: Multiplicative scale applied to the Rabi frequency.
-    :param bloch_rhs: The ``bloch_rhs`` function from the integrate module.
-    :param bloch_density_rhs: The ``bloch_density_rhs`` function.
     :param method: ODE method (default ``'DOP853'``).
     :param atol: Absolute tolerance.
     :param rtol: Relative tolerance.
@@ -57,7 +132,7 @@ def _run_scipy(kvec, phi0, t0, tfinal, delta, omega, omega_args,
         vkvec = hkvec.T
 
         sol = solve_ivp(
-            lambda *x: bloch_density_rhs(
+            lambda *x: _rho_rhs(
                 x[0], x[1], nstates, hkvec, vkvec, loss_mat, delta_f,
                 omega, omega_args, phase, phase_args, omega_scale),
             [t0, tfinal_f], rho_vec,
@@ -68,7 +143,7 @@ def _run_scipy(kvec, phi0, t0, tfinal, delta, omega, omega_args,
         phi_final = sol.y[:, :, -1]
     else:
         sol = solve_ivp(
-            lambda *x: bloch_rhs(
+            lambda *x: _wf_rhs(
                 x[0], x[1], kvec, delta_f, omega, omega_args,
                 phase, phase_args, omega_scale=omega_scale,
                 transformed=transformed),

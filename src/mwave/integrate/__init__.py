@@ -1,5 +1,5 @@
 # Imports
-from numba import jit, complex128, float64
+from numba import jit, float64
 import numpy as np
 from matplotlib import pyplot as plt
 import warnings
@@ -139,120 +139,6 @@ class ScanResult:
         ax.set_xlabel(self.param_name)
         return fig
 
-
-@jit(nopython=True)
-def bloch_rhs(t, phi, kvec, delta, omega, omega_args, phase, phase_args, omega_scale=1.0, transformed=False):
-    """Evaluates the right hand side of the Schrodinger equation for the Bloch Hamiltonian. The function returns a vector, one for each state included in the Hamiltonian.
-
-    The right hand side is defined in a general way so that a time-dependent field intensity and phase can be computed.
-
-    .. math::
-
-        \\text{returned vector}=i\\frac{\\Omega(t, a)}{2}\\left[e^{i(\\delta t+\\theta(t,b))}e^{i(-4k-4)t}\\lvert k\\rangle\\langle k + 2\\rvert + e^{-i(\\delta t+\\theta(t,b))}e^{i(4k-4)t}\\lvert k\\rangle\\langle k-2\\rvert\\right]\\rvert\\phi\\rangle
-    
-    where :math:`k` indexes momentum states spaced by two photon recoils. The time :math:`t` is evaluated at :code:`t`, and the state :math:`\\lvert\\phi\\rangle` is specified by :code:`phi`.
-    
-    The states :math:`k` included in the calculation are specified by :code:`kvec`. :math:`\\delta` is specified by :code:`delta`. :math:`\\Omega(t, a)` is specified by :code:`omega`, which must a function which takes arguments :code:`t` and :code:`omega_args`. :math:`\\theta(t, b)` is specified by :code:`phase`, which must a function which takes arguments :code:`t` and :code:`phase_args`.
-
-    If :code:`transformed` is :code:`True` then the right hand side is evaluated in the following frame:
-
-    .. math::
-
-        \\text{returned vector}=-ik^2\\lvert k\\rangle\\langle k\\rvert\\phi\\rangle + i\\frac{\\Omega(t, a)}{2}\\left[e^{i(\\delta t+\\theta(t,b))}\\lvert k\\rangle\\langle k + 2\\rvert + e^{-i(\\delta t+\\theta(t,b))}\\lvert k\\rangle\\langle k-2\\rvert\\right]\\rvert\\phi\\rangle
-    
-    To solve the Bloch Hamiltonian in time the :py:meth:`mwave.integrate.bloch_rhs` function can be integrated using :py:meth:`scipy.integrate.solve_ivp`.
-    
-    :param t: The time at which to evaluate the right hand side.
-    :param phi: The value of phi at which to evaluate the right hand side.
-    :param kvec: The momentum state values at which :code:`phi` is defined.
-    :param delta: The value of :math:`\\delta` (the two-photon detuning).
-    :param omega: The function that returns the value of the effective Rabi frequency :math:`\\Omega(t, a)` at an arbitrary time. The function must take two arguments, :code:`t` and :code:`omega_args`. The argument :code:`t` specifies the time at which to evaluate the effective Rabi frequency and the argument :code:`omega_args` can be used to pass in additional parameters.
-    :param omega_args: A tuple of arguments to pass to the function defined by :code:`omega`.
-    :param phase: The function that returns the phase of two photon detuning at an arbitrary time. The function must take two arguments, :code:`t` and :code:`phase_args`. The argument :code:`t` specifies the time at which to evaluate the phase and the argument :code:`phase_args` can be used to pass in additional parameters. This function can be set to a constant value if the user does not want to simulate a frequency swept process.
-    :param phase_args: A tuple of arguments to pass to the function defined by :code:`phase`.
-    :param transformed: See the function description above.
-    :returns: A vector containing the evaluated right hand side values."""
-    
-    # Compute phi_p1 and phi_m1 (pluse and minus 1)
-    phi_p1 = np.zeros_like(phi)
-    phi_p1[:-1] = phi[1:]
-    phi_m1 = np.zeros_like(phi)
-    phi_m1[1:] = phi[:-1]
-
-    # Compute Rabi frequency and phase at current time
-    oval = omega(t, omega_args) * omega_scale
-    phaseval = phase(t, phase_args)
-
-    # Compute RHS of ODE
-    if not transformed:
-        return 1j*oval/2*(np.exp(1j*(delta*t+phaseval))*np.exp(1j*(-4*kvec-4)*t)*phi_p1 + np.exp(-1j*(delta*t+phaseval))*np.exp(1j*(4*kvec-4)*t)*phi_m1)
-    
-    # Compute RHS of ODE in transformed frame
-    return -1j*phi*kvec**2 + 1j*oval/2*(np.exp(1j*(delta*t+phaseval))*phi_p1 + np.exp(-1j*(delta*t+phaseval))*phi_m1)
-
-@jit(nopython=True)
-def bloch_density_rhs(t, rho, nstates, hkvec, vkvec, loss_mat, delta, omega, omega_args, phase, phase_args, omega_scale=1.0):
-    """Evaluates the right hand side of the Von Neumann evolution equation for the Bloch Hamiltonian (i.e. :math:`[H,\\rho]`) where
-
-    .. math::
-
-        H=-\\hbar\\sum_{k}\\left[\\frac{\\Omega_\\text{eff}(t,a)}{2}e^{i(\\delta t+\\theta(t,b))}e^{i\\omega_\\text{r}(-4k-4)}|k\\rangle\\langle k+2|+\\frac{\\Omega_\\text{eff}(t,a)^*}{2}e^{-i(\\delta t+\\theta(t,b))}e^{i\\omega_\\text{r}(4k-4)}|k\\rangle\\langle k-2|\\right]
-         
-    where :math:`\\hbar=1` and the sum over :math:`k` is limited to the values of :math:`k` defined by :code:`hkvec` and :code:`vkvec`.
-         
-    The parameter :code:`rho` is supplied as a vector (this makes it compatible with :code:`scipy.integrate.solve_ivp`). This is then converted to a matrix via :code:`np.reshape(rho, (len(kvec), len(kvec)))` internally. The matrices :code:`hkvec` and :code:`vkvec` are composed of horizontal or vertical vectors of the momentum state grid stacked togeather.
-    
-    The parameter :code:`loss_mat` is the loss matrix.
-    
-    The remaining parameters (:code:`delta`, :code:`omega`, :code:`omega_args`, :code:`phase`, :code:`phase_args`) are equivalent to those used in the :py:meth:`mwave.integrate.bloch_rhs` function.
-    
-    :param t: The time at which to evaluate the right hand side.
-    :param rho: The value of rho at which to evaluate the right hand side.
-    :param nstates: The number of states in :code:`rho`, used to properly reshape the density matrix.
-    :param hkvec: The momentum state values at which :code:`rho` is defined along the horizontal axis.
-    :param vkvec: The momentum state values at which :code:`rho` is defined along the vertical axis.
-    :param loss_mat: The loss matrix to use.
-    :param delta: The value of :math:`\\delta` (the two-photon detuning).
-    :param omega: The function that returns the value of the effective Rabi frequency :math:`\\Omega(t, a)` at an arbitrary time. The function must take two arguments, :code:`t` and :code:`omega_args`. The argument :code:`t` specifies the time at which to evaluate the effective Rabi frequency and the argument :code:`omega_args` can be used to pass in additional parameters.
-    :param omega_args: A tuple of arguments to pass to the function defined by :code:`omega`.
-    :param phase: The function that returns the phase of two photon detuning at an arbitrary time. The function must take two arguments, :code:`t` and :code:`phase_args`. The argument :code:`t` specifies the time at which to evaluate the phase and the argument :code:`phase_args` can be used to pass in additional parameters. This function can be set to a constant value if the user does not want to simulate a frequency swept process.
-    :param phase_args: A tuple of arguments to pass to the function defined by :code:`phase`.
-    :returns: A vector containing the evaluated right hand side values."""
-
-    # Compute Rabi frequency and phase at current time
-    oval = omega(t, omega_args) * omega_scale
-    phaseval = phase(t, phase_args)
-
-    # Reshape rho into matrix
-    rho_mat = np.reshape(rho, (nstates, nstates))
-
-    # Create shifted matrices
-    sr = np.zeros_like(rho_mat)
-    sr[1:,:] = rho_mat[:-1,:]
-    
-    sl = np.zeros_like(rho_mat)
-    sl[:-1,:] = rho_mat[1:,:]
-
-    su = np.zeros_like(rho_mat)
-    su[:,:-1] = rho_mat[:,1:]
-
-    sd = np.zeros_like(rho_mat)
-    sd[:,1:] = rho_mat[:,:-1]
-
-    # # Compute each term in the RHS
-    term1 = 1j*oval/2*np.exp(1j*(delta*t+phaseval))*np.exp(1j*(-4*vkvec-4)*t)*sl
-    term2 = 1j*oval/2*np.exp(-1j*(delta*t+phaseval))*np.exp(1j*(4*vkvec-4)*t)*sr
-    term3 = -1j*oval/2*np.exp(1j*(delta*t+phaseval))*np.exp(1j*(-4*hkvec+4)*t)*sd
-    term4 = -1j*oval/2*np.exp(-1j*(delta*t+phaseval))*np.exp(1j*(4*hkvec+4)*t)*su
-    
-    # Complete making RHS
-    rho_mat_out = term1 + term2 + term3 + term4 + loss_mat*rho_mat
-
-    # Reshape
-    rho_out = np.reshape(rho_mat_out, nstates**2)
-
-    # Return
-    return rho_out
 
 @jit(float64(float64, float64[:]))
 def omega_fnc_gaussian(t, args):
@@ -482,7 +368,6 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args,
         phi_final, sol = _run_scipy(
             kvec, phi0, t0, tfinal, delta, omega, omega_args,
             phase, phase_args, omega_scale=float(omegas),
-            bloch_rhs=bloch_rhs, bloch_density_rhs=bloch_density_rhs,
             method=method, atol=atol, rtol=rtol, dense=dense,
             max_step=max_step, transformed=transformed, Gamma_sps=Gamma_sps,
         )
