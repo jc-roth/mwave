@@ -22,8 +22,7 @@ def _wf_rhs(t, phi, kvec, delta, omega, omega_args, phase, phase_args,
     """Schrodinger-equation RHS for the Bragg-Bloch Hamiltonian.
 
     Returns :math:`d\\phi/dt` evaluated at time *t* for the wavefunction
-    *phi* defined on the momentum grid *kvec*. See the documentation for
-    the explicit form of the equation.
+    *phi* defined on the momentum grid *kvec*.
     """
     # Compute phi_p1 and phi_m1 (plus and minus 1)
     phi_p1 = np.zeros_like(phi)
@@ -94,13 +93,13 @@ def _run_scipy(kvec, phi0, t0, tfinal, delta, omega, omega_args,
 
     :param kvec: Momentum-state grid ``(N,) float64``.
     :param phi0: Initial wavefunction ``(N,) complex128``.
-    :param t0: Start time.
-    :param tfinal: Final time.
-    :param delta: Two-photon detuning (scalar).
+    :param t0: Integration start time.
+    :param tfinal: Integration end time.
+    :param delta: The two-photon detuning.
     :param omega: Callable ``omega(t, omega_args) -> float``.
-    :param omega_args: Extra arguments for *omega*.
+    :param omega_args: Extra arguments for ``omega``.
     :param phase: Callable ``phase(t, phase_args) -> float``.
-    :param phase_args: Extra arguments for *phase*.
+    :param phase_args: Extra arguments for ``phase``.
     :param omega_scale: Multiplicative scale applied to the Rabi frequency.
     :param method: ODE method (default ``'DOP853'``).
     :param atol: Absolute tolerance.
@@ -109,25 +108,19 @@ def _run_scipy(kvec, phi0, t0, tfinal, delta, omega, omega_args,
     :param max_step: Maximum step size.
     :param transformed: Use the transformed frame.
     :param Gamma_sps: Single-photon scattering rate (``None`` to disable).
-    :returns: ``(phi_final, sol)`` where *phi_final* is the final state and
-        *sol* is the full :class:`~scipy.integrate.OdeResult`.
+    :returns: ``(phi_final, sol)`` where *phi_final* is the final state and ``sol`` is the full :class:`~scipy.integrate.OdeResult`.
     """
     tfinal_f = np.float64(tfinal)
     delta_f = np.float64(delta)
 
     if transformed and Gamma_sps is not None:
-        raise NotImplementedError(
-            'propagate does not support density-matrix evolution in the '
-            'transformed frame.'
-        )
+        raise NotImplementedError('propagate does not support density-matrix evolution in the transformed frame.')
 
     if Gamma_sps is not None:
         rho = np.outer(phi0, phi0)
         rho_vec = np.reshape(rho, len(kvec) ** 2)
         nstates = len(kvec)
-        loss_mat = (np.ones((nstates, nstates), dtype=np.complex128)
-                    - np.diag(np.ones(nstates, dtype=np.complex128))) \
-                   * -Gamma_sps / 2
+        loss_mat = (np.ones((nstates, nstates), dtype=np.complex128)-np.diag(np.ones(nstates, dtype=np.complex128)))*-Gamma_sps/2
         hkvec = np.tile(kvec, (nstates, 1))
         vkvec = hkvec.T
 

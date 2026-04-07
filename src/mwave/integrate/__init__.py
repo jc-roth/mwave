@@ -211,15 +211,19 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
     :param cache: Optional ``dict`` for memoising RK45 results.
     :returns: A :class:`PropagateResult`."""
 
-    # ── Detect single vs batch ────────────────────────────────────────────
+    # Validate shape of inputs
     scalar_input = np.ndim(phi0) == 1
 
     if scalar_input:
         phi0 = np.asarray(phi0, dtype=np.complex128)
+        if np.ndim(delta) != 0:
+            raise ValueError(f"delta must be a scalar for single-atom mode, got shape {np.shape(delta)}")
         delta = np.float64(delta)
         if omegas is None:
             omegas = np.float64(1.0)
         else:
+            if np.ndim(omegas) != 0:
+                raise ValueError(f"omegas must be a scalar for single-atom mode, got shape {np.shape(omegas)}")
             omegas = np.float64(omegas)
     else:
         phi0 = np.asarray(phi0, dtype=np.complex128)
@@ -244,27 +248,21 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
                 f"omegas has length {omegas.shape[0]} but phi0 has {natoms} atoms"
             )
 
-    # ── Auto-select backend ───────────────────────────────────────────────
+    # Select backend
     if backend is None:
         backend = 'scipy' if scalar_input else 'numba'
 
-    # ── Validation ────────────────────────────────────────────────────────
+    # Validate inputs match the selected backend
     if not scalar_input and backend == 'scipy':
-        raise ValueError("backend='scipy' is only supported for single-atom "
-                         "(1-D phi0). Use 'numba', 'cpp', 'gpu', or 'metal' "
-                         "for batch mode.")
+        raise ValueError("backend='scipy' is only supported for single-atom (1D phi0). Use 'numba', 'cpp', 'gpu', or 'metal' for batch mode.")
     if not scalar_input and dense:
         raise ValueError("dense=True is not supported for batch mode.")
     if dense and backend != 'scipy':
-        raise ValueError(
-            f"dense=True requires backend='scipy', got backend='{backend}'."
-        )
+        raise ValueError(f"dense=True requires backend='scipy', got backend='{backend}'.")
     if backend != 'scipy' and (transformed or Gamma_sps is not None):
-        raise ValueError(
-            "transformed and Gamma_sps are only supported with backend='scipy'."
-        )
+        raise ValueError("transformed and Gamma_sps are only supported with backend='scipy'.")
 
-    # ── scipy path ────────────────────────────────────────────────────────
+    # Call scipy
     if backend == 'scipy':
         phi_final, sol = _run_scipy(
             kvec, phi0, t0, tfinal, delta, omega, omega_args,
@@ -279,8 +277,7 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
             scipy_sol=sol,
         )
 
-    # ── RK45 backends ─────────────────────────────────────────────────────
-    # Normalise to 2-D arrays for the batched kernel
+    # Make inputs 2D arrays, as at this point we are not using the scipy backend
     if scalar_input:
         phi0_2d = phi0[np.newaxis, :]
         delta_arr = np.atleast_1d(np.asarray(delta, dtype=np.float64))
@@ -407,12 +404,12 @@ def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
     omegas  = np.ones(natoms)
     phi0b   = np.tile(phi0[np.newaxis, :], (natoms, 1))
 
-    # Reference: python backend (always available)
+    # Reference: scipy backend (always available)
     ref = propagate(
         kvec, phi0b, tfinal, deltas,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=omegas, tol=tol, backend='numba',
+        omegas=omegas, tol=tol, backend='scipy',
     )
     phi_ref = ref.phi_final
 
