@@ -224,7 +224,7 @@ class InterferometerNode(TreeNode):
         return self.amp_diff
     
     def get_phase(self):
-        """Returns the the phase of the state by summing the phase differences of all ancestor states togeather."""
+        """Returns the phase of the state by summing the phase differences of all ancestor states together."""
         # Create a variable to track the phase, set it equal to the phase of this state
         phase = self.get_phase_diff()
 
@@ -240,7 +240,7 @@ class InterferometerNode(TreeNode):
         return phase
     
     def get_amp(self):
-        """Returns the the amplitude of the state by multiplying the amplitudes of all ancestor states togeather."""
+        """Returns the amplitude of the state by multiplying the amplitudes of all ancestor states together."""
         # Create a variable to track the amplitude, set it equal to the amplitude of this state
         amp = self.get_amp_diff()
 
