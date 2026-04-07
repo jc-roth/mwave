@@ -14,14 +14,8 @@ Unified API:
   - backend: 'scipy', 'numba', 'cpp', 'gpu', 'metal', or None (auto)
 """
 
-import sys
-import os
 import numpy as np
 import pytest
-
-_MWAVE_SRC = os.path.join(os.path.dirname(__file__), '..', 'src')
-if _MWAVE_SRC not in sys.path:
-    sys.path.insert(0, _MWAVE_SRC)
 
 from mwave.integrate import (
     propagate, PropagateResult, make_kvec, make_phi,
