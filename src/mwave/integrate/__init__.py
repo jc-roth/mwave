@@ -51,7 +51,7 @@ class PropagateResult:
         nearest to *k*.  For batch results returns an ``(natoms,)`` array."""
         idx = int(np.argmin(np.abs(self.kvec - k)))
         if np.ndim(self.phi_final) == 1:
-            return float(np.abs(self.phi_final[idx]) ** 2)
+            return np.abs(self.phi_final[idx]) ** 2
         return np.abs(self.phi_final[:, idx]) ** 2
 
     def populations(self):
@@ -88,54 +88,6 @@ class PropagateResult:
         ax3.set_ylabel(r'$\theta(t)$')
         ax3.set_xlabel(r'time [$1/\omega_r$]')
         plt.tight_layout()
-        return fig
-
-
-class ScanResult:
-    """Collect :class:`PropagateResult` objects from a parameter scan.
-
-    This is a user-level convenience class — it is *not* returned by
-    :func:`propagate` itself.
-
-    :param results: List of :class:`PropagateResult` instances.
-    :param param_name: Human-readable name of the scanned parameter (used as
-        the x-axis label in plots).
-    :param param_values: The parameter values corresponding to each result.
-    """
-
-    def __init__(self, results, param_name, param_values):
-        self.results = results
-        self.param_name = param_name
-        self.param_values = np.asarray(param_values)
-
-    def get_pops(self, k0, kf):
-        """Return ``(p0s, pfs)`` population arrays at states *k0* and *kf*."""
-        p0s = np.array([r.population(k0) for r in self.results])
-        pfs = np.array([r.population(kf) for r in self.results])
-        return p0s, pfs
-
-    def get_inversion(self, k0, kf):
-        """Return the inversion ``(p0 - pf) / (p0 + pf)``."""
-        p0s, pfs = self.get_pops(k0, kf)
-        return (p0s - pfs) / (p0s + pfs)
-
-    def get_interp(self, k0, kf):
-        """Return cubic interpolators ``(interp_p0, interp_pf)`` over the scan
-        parameter values."""
-        from scipy.interpolate import RegularGridInterpolator as RGI
-        p0s, pfs = self.get_pops(k0, kf)
-        return (RGI((self.param_values,), p0s, method='cubic'),
-                RGI((self.param_values,), pfs, method='cubic'))
-
-    def plot_inversion(self, k0, kf):
-        """Plot the inversion vs the scanned parameter.
-
-        :returns: The matplotlib :class:`~matplotlib.figure.Figure`.
-        """
-        fig, ax = plt.subplots()
-        ax.plot(self.param_values, self.get_inversion(k0, kf))
-        ax.set_ylabel('inversion')
-        ax.set_xlabel(self.param_name)
         return fig
 
 
