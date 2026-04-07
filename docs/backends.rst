@@ -86,7 +86,7 @@ Pilot + fixed-step Richardson (cpp, gpu, metal)
 
 The ``cpp``, ``gpu``, and ``metal`` backends use fixed-step RK4 with Richardson extrapolation to reach the requested tolerance:
 
-1. **Pilot step-size estimate.** A cheap 3-state (``k = [-2, 0, 2]``) adaptive RK45 integration is run via SciPy. The mean accepted step size gives a conservative starting estimate for the fixed-step integrator.
+1. **Pilot step-size estimate.** A cheap adaptive RK45 integration is run via SciPy on the full ``kvec`` (using the worst-case detuning and the largest per-atom Rabi scale). The mean accepted step size gives a conservative starting estimate for the fixed-step integrator.
 
 2. **Pre-evaluation.** The time-dependent Rabi envelope :math:`\Omega(t)`, drive phase :math:`e^{i\theta(t)}`, and kinematic coupling terms :math:`e^{i(\pm 4k \mp 4)t}` are evaluated once on a uniform time grid and stored in arrays. This avoids redundant callable evaluations inside the inner loop.
 
