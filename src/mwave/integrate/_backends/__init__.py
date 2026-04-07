@@ -13,10 +13,6 @@ import numpy as np
 from ._scipy import _run_scipy
 
 from ._numba import (
-    _rk4_bloch_single_kernel,
-    _rk4_bloch_batched_kernel,
-    _bloch_numba_warmup,
-    _ensure_bloch_numba,
     _rk45_dp_step,
     _rk45_bloch_adaptive,
 )
@@ -51,7 +47,8 @@ def _cptr(arr):
 def _preeval_rk4_arrays(kvec, t0, nsteps, h, omega, omega_args, phase, phase_args):
     """Pre-evaluate omega, phase, and kinematic arrays on a uniform grid.
 
-    Returns arrays used by :py:func:`_rk4_bloch_single_kernel`:
+    Returns the arrays consumed by the fixed-step RK4 kernels in
+    :py:func:`_run_batched` (cpp/gpu/metal backends):
     ``(env_full, env_half, eph_full, eph_half, kinp_full, kinm_full, kinp_half, kinm_half)``
 
     :param kvec: Momentum-state grid.
@@ -89,23 +86,16 @@ def _run_batched(backend, phi0, deltas, omegas, h, t0,
                  kinp_full, kinm_full, kinp_half, kinm_half):
     """Run one fixed-step RK4 pass over all atoms with the chosen backend.
 
+    Used by the cpp/gpu/metal pilot+Richardson path in
+    :py:func:`mwave.integrate.propagate`.  The numba backend uses
+    :py:func:`_rk45_bloch_adaptive` directly and does not go through here.
+
     :returns: ``(natoms, N) complex128`` wavefunction after integration.
     """
     natoms, N = phi0.shape
     nsteps    = env_half.shape[0]
 
-    if backend == 'numba':
-        _ensure_bloch_numba()
-        phi_all           = phi0.copy()
-        delta_phase_inits = deltas * t0
-        _rk4_bloch_batched_kernel(
-            phi_all, omegas, h,
-            env_full, env_half, eph_full, eph_half,
-            kinp_full, kinm_full, kinp_half, kinm_half,
-            deltas, delta_phase_inits)
-        return phi_all
-
-    elif backend == 'cpp':
+    if backend == 'cpp':
         lib   = _ensure_bloch_cpp(N)
         phi32 = np.ascontiguousarray(phi0,      dtype=np.complex64)
         ef32  = np.ascontiguousarray(env_full,  dtype=np.float32)
@@ -220,5 +210,5 @@ def _run_batched(backend, phi0, deltas, omegas, h, t0,
 
     else:
         raise ValueError(
-            f"propagate: unknown backend {backend!r}; "
-            "choose 'numba', 'cpp', 'gpu', or 'metal'")
+            f"_run_batched: unknown backend {backend!r}; "
+            "choose 'cpp', 'gpu', or 'metal'")

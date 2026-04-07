@@ -5,7 +5,6 @@ from matplotlib import pyplot as plt
 import warnings
 from ._backends import (
     _preeval_rk4_arrays,
-    _rk4_bloch_single_kernel,
     _rk45_bloch_adaptive,
     _run_batched,
     _run_scipy,
