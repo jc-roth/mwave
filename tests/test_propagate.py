@@ -194,7 +194,7 @@ def test_batch_mode_agrees_with_single_atom():
             kvec, phi0, tfinal, deltas[i],
             omega_fnc_gaussian, omega_args,
             phase_fnc_constant, phase_args,
-            omegas=omegas[i], tol=1e-6, backend='numba',
+            omegas=omegas[i], tol=1e-6, backend='scipy',
         )
         max_diff = float(np.max(np.abs(res_batch.phi_final[i] - res_single.phi_final)))
         assert max_diff < 1e-7, (
