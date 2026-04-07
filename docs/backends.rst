@@ -1,7 +1,7 @@
 Integration backends
 ####################
 
-The :py:func:`mwave.integrate.propagate` function integrates the Hamiltonian for Bragg diffraction and Bloch oscillations. Five backends are available targeting different hardware. The backend can be selected explicitly via the ``backend`` parameter or left as ``None`` for default selection.
+The :py:func:`mwave.integrate.propagate` function integrates the Hamiltonian for Bragg diffraction and Bloch oscillations. Two backends are available. The backend can be selected explicitly via the ``backend`` parameter or left as ``None`` for default selection.
 
 .. contents:: On this page
    :local:
@@ -32,9 +32,9 @@ When the ``scipy`` backend is invoked with ``Gamma_sps``, it integrates the Von 
 .. math::
 
     H=-\hbar\sum_{k}\left[\frac{\Omega_\text{eff}(t)}{2}e^{i(\delta t+\theta(t))}e^{i\omega_\text{r}(-4k-4)}|k\rangle\langle k+2|+\frac{\Omega_\text{eff}(t)^*}{2}e^{-i(\delta t+\theta(t))}e^{i\omega_\text{r}(4k-4)}|k\rangle\langle k-2|\right]
-      
+
 where :math:`\hbar=1` and the sum over :math:`k` is limited to the values of :math:`k` defined by :code:`hkvec` and :code:`vkvec`.
-      
+
 The parameter :code:`rho` is supplied as a vector (this makes it compatible with :code:`scipy.integrate.solve_ivp`). This is then converted to a matrix via :code:`np.reshape(rho, (len(kvec), len(kvec)))` internally. The matrices :code:`hkvec` and :code:`vkvec` are composed of horizontal or vertical vectors of the momentum state grid stacked togeather.
 
 The parameter :code:`loss_mat` is the loss matrix.
@@ -49,16 +49,16 @@ When ``backend=None``, ``propagate`` selects backends based on the shape of ``ph
 
 .. |rarr| unicode:: U+2192
 
-You can override this by passing ``backend='cpp'``, ``backend='gpu'``, etc.
+You can override this by passing ``backend='scipy'`` or ``backend='numba'`` explicitly.
 
-To benchmark all available backends on your machine, call :py:func:`mwave.integrate.score_backends`:
+To benchmark the available backends on your machine, call :py:func:`mwave.integrate.score_backends`:
 
 .. code-block:: python
 
    from mwave.integrate import score_backends
    score_backends()
 
-This runs a standard 5\ :math:`\hbar k` Bragg pulse with 100 atoms through each backend, reports wall-clock time, and flags any that are unavailable due to missing dependencies. You can adjust the number of atoms included in the integration using the argument ``natoms=10000``.
+This runs a standard 5\ :math:`\hbar k` Bragg pulse through each backend for a single atom and then a batch of atoms, reporting the wall-clock time. The number of atoms used in the batch can be adjusted via ``natoms=10000`` or similar.
 
 .. note::
 
@@ -67,12 +67,7 @@ This runs a standard 5\ :math:`\hbar k` Bragg pulse with 100 atoms through each 
 Integration strategies
 ======================
 
-The backends use two distinct integration strategies:
-
-Adaptive step-size Runge-Kutta (scipy, numba)
----------------------------------------------
-
-The ``scipy`` and ``numba`` backends use adaptive step-size control. At each step the integrator estimates the local error and adjusts the step size to keep it within tolerance.
+Both backends use adaptive step-size Runge-Kutta integration. At each step the integrator estimates the local error and adjusts the step size to keep it within tolerance.
 
 - **scipy** uses SciPy's ``solve_ivp`` with the ``DOP853`` method (8th-order Dormand-Prince). It is the highest-precision option and supports dense (interpolatable) output, the transformed frame, and density-matrix evolution with single-photon scattering (``Gamma_sps``). Single-atom only.
 
@@ -84,19 +79,6 @@ The ``scipy`` and ``numba`` backends use adaptive step-size control. At each ste
      h_new  = clamp(h * factor, 0.1*h, 10*h)
 
   where ``tol_step = tol * h / T`` scales the local budget to bound the global error. The local error is taken as the maximum across all atoms and momentum states, so a single step size is chosen that satisfies the worst-case atom. The per-atom RK45 stages themselves are evaluated in parallel via Numba ``prange``.
-
-Pilot + fixed-step Richardson (cpp, gpu, metal)
-------------------------------------------------
-
-The ``cpp``, ``gpu``, and ``metal`` backends use fixed-step RK4 with Richardson extrapolation to reach the requested tolerance:
-
-1. **Pilot step-size estimate.** A cheap adaptive RK45 integration is run via SciPy on the full ``kvec`` (using the worst-case detuning and the largest per-atom Rabi scale). The mean accepted step size gives a conservative starting estimate for the fixed-step integrator.
-
-2. **Pre-evaluation.** The time-dependent Rabi envelope :math:`\Omega(t)`, drive phase :math:`e^{i\theta(t)}`, and kinematic coupling terms :math:`e^{i(\pm 4k \mp 4)t}` are evaluated once on a uniform time grid and stored in arrays. This avoids redundant callable evaluations inside the inner loop.
-
-3. **Richardson loop.** Two passes are run at step sizes ``h`` and ``h/2``. The error is estimated as :math:`\max|\phi_{\text{coarse}} - \phi_{\text{fine}}| / 15` (from the RK4 error scaling). If the error exceeds ``tol``, the step count is doubled and the process repeats, up to ``max_halvings`` iterations.
-
-This strategy is well-suited to compiled backends where the inner RK4 loop is extremely fast but cannot easily support embedded error estimates.
 
 Backends
 ========
@@ -131,93 +113,9 @@ numba
 
 The default backend for batch simulations. Uses an adaptive Dormand-Prince RK45 integrator compiled with ``@njit(parallel=True, fastmath=True)``.
 
-Each atom is integrated independently with its own per-atom detuning (``delta``) and Rabi scale (``omegas``). The adaptive stepper means no pilot integration or Richardson extrapolation is needed -- a single pass suffices.
+Each atom is integrated independently with its own per-atom detuning (``delta``) and Rabi scale (``omegas``).
 
-This backend operates in float64 throughout. It is the reference implementation against which other backends are validated.
-
-cpp
----
-
-:Dependencies: C++ compiler (``g++`` or ``clang++`` with OpenMP)
-:Precision: float32 state, float64 detuning phase accumulation
-:Parallelism: OpenMP (``#pragma omp parallel for``)
-:Compilation: On first use per unique ``N``; cached to disk at ``src/cpp_build/``
-
-A C++ kernel compiled at runtime via ``g++`` (or Apple Clang + Homebrew libomp on macOS). The compiler is auto-detected from a list of candidates.
-
-The kernel uses fixed-step RK4 with one OpenMP thread per atom. Detuning phases are accumulated in float64 and truncated to float32 at each step to avoid drift, while the wavefunction state is stored in float32 for speed.
-
-Compiled shared libraries are cached on disk (keyed by ``N`` and a source hash), so the ~1-2 second compilation cost is only paid once.
-
-Typical speedup: **2-5x** over the numba backend.
-
-gpu
----
-
-:Dependencies: `CuPy <https://cupy.dev/>`_ and an NVIDIA GPU with CUDA
-:Precision: float32 state, float64 detuning phase accumulation (on CPU)
-:Parallelism: One CUDA block per atom, ``nextpow2(N)`` threads per block
-:Compilation: NVRTC on first use per unique ``N``; cached per session
-
-Two CUDA kernels are compiled at runtime:
-
-1. **Detuning phase precompute** (``bloch_ep_precompute_T``): one thread per atom, computes :math:`e^{i \delta_i t_j}` for all time steps. Float64 accumulation on GPU, stored as float32.
-
-2. **RK4 integration** (``bloch_rk4_noFP64_T``): one block per atom with ``nextpow2(N)`` threads. Uses ping-pong shared memory for the RK4 stages -- each of the four stages reads from one shared-memory buffer and writes to the other, with threadgroup barriers between stages. This avoids register spilling for large ``N``.
-
-The transposed memory layout (atoms as the fast index for detuning phases) ensures coalesced GPU memory access.
-
-Typical speedup: **10-50x** over the numba backend for large ``N`` and many atoms.
-
-metal
------
-
-:Dependencies: `metalcompute <https://pypi.org/project/metalcompute/>`_ and an Apple Silicon GPU
-:Precision: float32 state; detuning phases computed in float64 on CPU
-:Parallelism: One threadgroup per atom, ``nextpow2(N)`` threads per group
-:Compilation: Metal Shading Language on first use per unique ``N``; cached per session
-
-A Metal compute shader for Apple Silicon. The kernel structure mirrors the CUDA backend (ping-pong shared memory, 4 barriers per RK4 step), but detuning phases :math:`e^{i \delta_i t_j}` are computed on the CPU in float64 and passed to the GPU as float32. This is necessary because Apple Silicon does not natively support float64 in Metal shaders, but produces numerically identical results to the CUDA backend's float64 GPU accumulation.
-
-Dispatch uses ``natoms * nextpow2(N)`` total threads with a fixed threadgroup size of 1024. Since ``nextpow2(N)`` is always a power of two that divides 1024, each atom's threads are guaranteed to land in the same threadgroup.
-
-Typical speedup: **5-20x** over the numba backend.
-
-Precision and numerical consistency
-====================================
-
-All backends solve the same Bloch Hamiltonian, but differ in floating-point precision:
-
-.. list-table::
-   :header-rows: 1
-   :widths: 15 20 25 20
-
-   * - Backend
-     - State precision
-     - Detuning phase
-     - Output
-   * - scipy
-     - float64
-     - float64
-     - float64
-   * - numba
-     - float64
-     - float64
-     - float64
-   * - cpp
-     - float32
-     - float64 accumulation, float32 per step
-     - float64 (upcast)
-   * - gpu
-     - float32
-     - float64 accumulation, float32 storage
-     - float64 (upcast)
-   * - metal
-     - float32
-     - float64 on CPU, float32 on GPU
-     - float64 (upcast)
-
-The ``cpp``, ``gpu``, and ``metal`` backends return float64 arrays (upcast from float32) for a uniform API. The :py:func:`~mwave.integrate.score_backends` function performs two timed runs: a single-atom run (errors reported against the ``scipy`` reference) and a batch run (errors reported against the ``numba`` reference, since ``scipy`` does not support batch mode). All backends are expected to agree with their respective reference to within ``1e-3``.
+This backend operates in float64 throughout.
 
 Choosing a backend
 ==================
@@ -235,18 +133,9 @@ Choosing a backend
    * - Single atom, default
      - scipy
      - Auto-selected; highest precision
-   * - Batch, no GPU available
+   * - Batch
      - numba
-     - No compilation; sufficient for small batches
-   * - Batch, macOS with Apple Silicon
-     - metal
-     - Native GPU; no CUDA dependency
-   * - Batch, NVIDIA GPU available
-     - gpu
-     - Best throughput for large N and many atoms
-   * - Batch, Linux/cluster without GPU
-     - cpp
-     - Good scaling with OpenMP; cached compilation
+     - Auto-selected; parallelised over atoms
    * - Very tight tolerance (< 1e-9)
      - scipy
-     - Full float64 throughout
+     - DOP853 is higher order than RK45

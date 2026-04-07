@@ -5,13 +5,12 @@ Unified API:
     propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args,
               omegas=None, t0=0.0, backend=None, dense=False, method='DOP853',
               atol=1e-10, rtol=1e-10, max_step=0.1, transformed=False,
-              Gamma_sps=None, tol=1e-6, max_halvings=6, pilot_rtol=1e-8,
-              cache=None)
+              Gamma_sps=None, tol=1e-10, cache=None)
 
   - phi0   : (N,) single-atom or (natoms, N) batch
   - delta  : scalar or (natoms,) float64
   - omegas : scalar or (natoms,) float64 — per-atom Rabi scale (default 1.0)
-  - backend: 'scipy', 'numba', 'cpp', 'gpu', 'metal', or None (auto)
+  - backend: 'scipy', 'numba', or None (auto)
 """
 
 import numpy as np
@@ -251,110 +250,7 @@ def test_batch_norm_conservation():
     assert max_dev < 1e-7, f"max norm deviation across batch = {max_dev:.2e}"
 
 
-# ── Test 9: cpp backend agrees with python backend ──────────────────────────
-
-def test_cpp_backend_agrees_with_python():
-    """'cpp' backend must agree with 'numba' backend to within 1e-5."""
-    pytest.importorskip('subprocess')
-    import subprocess
-    if subprocess.run(['g++', '--version'], capture_output=True).returncode != 0:
-        pytest.skip("g++ not available")
-
-    kvec, phi0, tfinal, delta, omega_args, phase_args = _gaussian_setup()
-    natoms = 3
-    deltas = np.array([delta * 0.99, delta, delta * 1.01])
-    omegas = np.ones(natoms)
-    phi0_batch = np.tile(phi0[np.newaxis, :], (natoms, 1))
-
-    res_py = propagate(
-        kvec, phi0_batch, tfinal, deltas,
-        omega_fnc_gaussian, omega_args,
-        phase_fnc_constant, phase_args,
-        omegas=omegas, tol=1e-6, backend='numba',
-    )
-    try:
-        res_cpp = propagate(
-            kvec, phi0_batch, tfinal, deltas,
-            omega_fnc_gaussian, omega_args,
-            phase_fnc_constant, phase_args,
-            omegas=omegas, tol=1e-6, backend='cpp',
-        )
-    except RuntimeError as e:
-        pytest.skip(f"C++ compilation failed: {e}")
-
-    max_diff = float(np.max(np.abs(res_py.phi_final - res_cpp.phi_final)))
-    assert max_diff < 1e-5, f"cpp vs python max diff = {max_diff:.2e}"
-
-
-# ── Test 10: gpu backend agrees with python backend ─────────────────────────
-
-def test_gpu_backend_agrees_with_python():
-    """'gpu' backend must agree with 'numba' backend to within 1e-4."""
-    cp = pytest.importorskip('cupy')
-    try:
-        cp.cuda.Device(0).use()
-    except Exception:
-        pytest.skip("No CUDA device available")
-
-    kvec, phi0, tfinal, delta, omega_args, phase_args = _gaussian_setup()
-    natoms = 3
-    deltas = np.array([delta * 0.99, delta, delta * 1.01])
-    omegas = np.ones(natoms)
-    phi0_batch = np.tile(phi0[np.newaxis, :], (natoms, 1))
-
-    res_py = propagate(
-        kvec, phi0_batch, tfinal, deltas,
-        omega_fnc_gaussian, omega_args,
-        phase_fnc_constant, phase_args,
-        omegas=omegas, tol=1e-6, backend='numba',
-    )
-    try:
-        res_gpu = propagate(
-            kvec, phi0_batch, tfinal, deltas,
-            omega_fnc_gaussian, omega_args,
-            phase_fnc_constant, phase_args,
-            omegas=omegas, tol=1e-6, backend='gpu',
-        )
-    except Exception as e:
-        pytest.skip(f"GPU kernel failed: {e}")
-
-    max_diff = float(np.max(np.abs(res_py.phi_final - res_gpu.phi_final)))
-    assert max_diff < 1e-4, f"gpu vs python max diff = {max_diff:.2e}"
-
-
-# ── Test 11: metal backend agrees with python backend ───────────────────────
-
-def test_metal_backend_agrees_with_python():
-    """'metal' backend must agree with 'numba' backend to within 1e-4."""
-    pytest.importorskip('metalcompute')
-
-    kvec, phi0, tfinal, delta, omega_args, phase_args = _gaussian_setup()
-    natoms = 3
-    deltas = np.array([delta * 0.99, delta, delta * 1.01])
-    omegas = np.ones(natoms)
-    phi0_batch = np.tile(phi0[np.newaxis, :], (natoms, 1))
-
-    res_py = propagate(
-        kvec, phi0_batch, tfinal, deltas,
-        omega_fnc_gaussian, omega_args,
-        phase_fnc_constant, phase_args,
-        omegas=omegas, tol=1e-6, backend='numba',
-    )
-    try:
-        res_metal = propagate(
-            kvec, phi0_batch, tfinal, deltas,
-            omega_fnc_gaussian, omega_args,
-            phase_fnc_constant, phase_args,
-            omegas=omegas, tol=1e-6, backend='metal',
-        )
-    except Exception as e:
-        pytest.skip(f"Metal kernel failed: {e}")
-
-    max_diff = float(np.max(np.abs(res_py.phi_final - res_metal.phi_final)))
-    assert max_diff < 1e-4, f"metal vs python max diff = {max_diff:.2e}"
-
-
-# ── Test 12: NumericBraggInterferometer end-to-end ──────────────────────────
+# ── Test 9: NumericBraggInterferometer end-to-end ───────────────────────────
 
 def test_propagate_with_interferometer():
     """propagate must agree with scipy backend across all output ports of a full

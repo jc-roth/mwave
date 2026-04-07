@@ -2,11 +2,8 @@
 from numba import jit, float64
 import numpy as np
 from matplotlib import pyplot as plt
-import warnings
 from ._backends import (
-    _preeval_rk4_arrays,
     _rk45_bloch_adaptive,
-    _run_batched,
     _run_scipy,
 )
 
@@ -19,8 +16,7 @@ class PropagateResult:
       ``(natoms, N)`` for batch mode.
     - ``kvec``: Momentum-state grid used in the simulation.
 
-    Attributes set only for the RK45 backends (``'numba'``, ``'cpp'``,
-    ``'gpu'``, ``'metal'``):
+    Attributes set only for the ``'numba'`` backend:
 
     - ``dt``: Step size used by the integrator.
     - ``error``: Estimated integration error.
@@ -175,16 +171,13 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
               # scipy options
               dense=False, method='DOP853', atol=1e-10, rtol=1e-10, max_step=0.1, transformed=False, Gamma_sps=None,
               # RK45 options
-              tol=1e-10, max_halvings=6, pilot_rtol=1e-10, cache=None):
+              tol=1e-10, cache=None):
     """Evolves the provided wavefunction using the equations of motion described in :doc:`/backends`. The user can provide a single atom wavefunction (in which case the ``scipy`` backend is used), or a batch of wavefunctions to be integrated in parallel (in which case the ``numba`` backend is used). The wavefunction batching provided by the function is significantly more efficient than looping over a single atom wavefunction call multiple times.
 
     **Backends**
 
     - ``'scipy'`` — adaptive ``solve_ivp`` (default for single-atom). Supports ``dense`` output, the ``transformed`` frame, and spontaneous emission via ``Gamma_sps``. Unavailable for batch mode.
     - ``'numba'`` — Numba RK45 with ``prange`` (default for batch).
-    - ``'cpp'`` — C++ OpenMP kernel.
-    - ``'gpu'`` — CUDA kernel via CuPy.
-    - ``'metal'`` — Apple Silicon GPU via metalcompute.
 
     :param kvec: The vector of momentum states to simulate ``(N,) float64``.
     :param phi0: The initial value of phi. ``(N,)`` for single-atom or ``(natoms, N)`` for batch mode.
@@ -196,7 +189,7 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
     :param phase_args: Extra arguments forwarded to ``phase``.
     :param omegas: Per-atom Rabi frequency scale.  Scalar or ``(natoms,)``. Defaults to ``1.0`` for single-atom, ``np.ones(natoms)`` for batch.
     :param t0: Integration start time (default ``0.0``).
-    :param backend: ``'scipy'``, ``'numba'``, ``'cpp'``, ``'gpu'``, ``'metal'``, or ``None``. If ``None``, ``scipy`` will be selected for a single wavefunction and ``numba`` will be selected for a batch of wavefunctions.
+    :param backend: ``'scipy'``, ``'numba'``, or ``None``. If ``None``, ``scipy`` will be selected for a single wavefunction and ``numba`` will be selected for a batch of wavefunctions.
     :param dense: If true dense output is returned (i.e. the integration result can be queried for any intermediate time). Requires ``backend='scipy'``.
     :param method: ODE method for ``backend='scipy'`` (default ``'DOP853'``). Ignored for other backends.
     :param atol: Absolute tolerance for ``backend='scipy'`` (default ``1e-10``). Ignored for other backends.
@@ -204,10 +197,8 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
     :param max_step: Maximum step size for ``backend='scipy'`` (default ``0.1``). Ignored for other backends.
     :param transformed: Use the transformed frame for ``backend='scipy'`` (default ``False``). Ignored for other backends.
     :param Gamma_sps: Single-photon scattering rate for density-matrix evolution for ``backend='scipy'`` (default ``None``). Ignored for other backends.
-    :param tol: Error tolerance for the RK45 backends (default ``1e-6``).
-    :param max_halvings: Maximum Richardson halvings for ``'cpp'``/``'gpu'``/``'metal'`` (default ``6``).
-    :param pilot_rtol: Pilot RK45 tolerance for ``'cpp'``/``'gpu'``/``'metal'`` (default ``1e-8``).
-    :param cache: Optional ``dict`` for memoising results from the non-``scipy`` backends. The cache key incorporates every input that affects the output (``phi0``, ``delta``, ``omegas``, ``kvec``, ``omega_args``, ``phase_args``, ``t0``, ``tfinal``, ``backend``, ``tol``, ``max_halvings``, ``pilot_rtol``) along with the ``omega`` and ``phase`` callables themselves. The callables are hashed by object identity, so to get cache hits across calls you must reuse the *same* function object. Wrapping the same underlying function in a fresh ``lambda`` on each call will produce a distinct object and miss the cache. Define the wrapper once and reuse it.
+    :param tol: Error tolerance for the ``numba`` RK45 backend (default ``1e-10``).
+    :param cache: Optional ``dict`` for memoising results from the ``numba`` backend. The cache key incorporates every input that affects the output (``phi0``, ``delta``, ``omegas``, ``kvec``, ``omega_args``, ``phase_args``, ``t0``, ``tfinal``, ``backend``, ``tol``) along with the ``omega`` and ``phase`` callables themselves. The callables are hashed by object identity, so to get cache hits across calls you must reuse the *same* function object. Wrapping the same underlying function in a fresh ``lambda`` on each call will produce a distinct object and miss the cache. Define the wrapper once and reuse it.
     :returns: A :class:`PropagateResult`."""
 
     # Validate shape of inputs
@@ -252,8 +243,10 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
         backend = 'scipy' if scalar_input else 'numba'
 
     # Validate inputs match the selected backend
+    if backend not in ('scipy', 'numba'):
+        raise ValueError(f"unknown backend {backend!r}; choose 'scipy' or 'numba'.")
     if not scalar_input and backend == 'scipy':
-        raise ValueError("backend='scipy' is only supported for single-atom (1D phi0). Use 'numba', 'cpp', 'gpu', or 'metal' for batch mode.")
+        raise ValueError("backend='scipy' is only supported for single-atom (1D phi0). Use 'numba' for batch mode.")
     if not scalar_input and dense:
         raise ValueError("dense=True is not supported for batch mode.")
     if dense and backend != 'scipy':
@@ -292,93 +285,21 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
             np.asarray(kvec).tobytes(),
             omega, np.asarray(omega_args).tobytes(),
             phase, np.asarray(phase_args).tobytes(),
-            float(t0), float(tfinal), backend,
-            float(tol), int(max_halvings), float(pilot_rtol),
+            float(t0), float(tfinal), backend, float(tol),
         )
         if cache_key in cache:
             return cache[cache_key]
 
-    # ── Python backend: adaptive RK45 ─────────────────────────────────────
-    if backend == 'numba':
-        phi_all, dt_used, error_est = _rk45_bloch_adaptive(
-            phi0_2d, omegas_arr, delta_arr, t0, tfinal,
-            omega, omega_args, phase, phase_args, kvec, tol)
-        phi_out = phi_all[0] if scalar_input else phi_all
-        result = PropagateResult(
-            phi_final=phi_out, kvec=kvec,
-            omega=omega, omega_args=omega_args,
-            phase=phase, phase_args=phase_args,
-            dt=dt_used, error=error_est,
-        )
-        if cache is not None:
-            cache[cache_key] = result
-        return result
-
-    # ── cpp / gpu / metal: pilot + fixed-step Richardson ──────────────────
-    delta_worst = float(np.max(np.abs(delta_arr)))
-    max_omega = float(np.max(np.abs(omegas_arr)))
-
-    # Pilot integration via the scipy backend on the same kvec gives a
-    # step-size estimate for the fixed-step RK4 kernel.  The mean accepted
-    # step is conservative; Richardson extrapolation handles accuracy
-    # regardless of the starting nsteps estimate.
-    pilot_result = propagate(
-        kvec, phi0_2d[0], tfinal, delta_worst,
-        omega, omega_args, phase, phase_args,
-        omegas=max_omega, t0=t0, backend='scipy', method='RK45',
-        rtol=pilot_rtol, atol=pilot_rtol * 1e-3, max_step=np.inf,
-    )
-    nsteps = max(len(pilot_result.scipy_sol.t) - 1, 1)
-
-    # Coarse integration
-    h = (tfinal - t0) / nsteps
-    arrays = _preeval_rk4_arrays(kvec, t0, nsteps, h,
-                                 omega, omega_args, phase, phase_args)
-    env_full, env_half, eph_full, eph_half, \
-        kinp_full, kinm_full, kinp_half, kinm_half = arrays
-
-    phi_coarse = _run_batched(
-        backend, phi0_2d, delta_arr, omegas_arr, h, t0,
-        env_full, env_half, eph_full, eph_half,
-        kinp_full, kinm_full, kinp_half, kinm_half)
-    error_est = np.inf
-
-    for _ in range(max_halvings + 1):
-        nsteps *= 2
-        h = (tfinal - t0) / nsteps
-        arrays = _preeval_rk4_arrays(kvec, t0, nsteps, h,
-                                     omega, omega_args, phase, phase_args)
-        env_full, env_half, eph_full, eph_half, \
-            kinp_full, kinm_full, kinp_half, kinm_half = arrays
-        phi_fine = _run_batched(
-            backend, phi0_2d, delta_arr, omegas_arr, h, t0,
-            env_full, env_half, eph_full, eph_half,
-            kinp_full, kinm_full, kinp_half, kinm_half)
-        error_est = float(np.max(np.abs(phi_coarse - phi_fine))) / 15.0
-        if error_est <= tol:
-            phi_out = phi_fine[0] if scalar_input else phi_fine
-            result = PropagateResult(
-                phi_final=phi_out, kvec=kvec,
-                omega=omega, omega_args=omega_args,
-                phase=phase, phase_args=phase_args,
-                dt=(tfinal - t0) / nsteps, error=error_est,
-            )
-            if cache is not None:
-                cache[cache_key] = result
-            return result
-        phi_coarse = phi_fine
-
-    warnings.warn(
-        f"propagate: tol={tol} not met after {max_halvings} halvings "
-        f"(error_est={error_est:.2e}); returning best result.",
-        RuntimeWarning, stacklevel=2,
-    )
-    phi_out = phi_fine[0] if scalar_input else phi_fine
+    # ── numba backend: adaptive RK45 ──────────────────────────────────────
+    phi_all, dt_used, error_est = _rk45_bloch_adaptive(
+        phi0_2d, omegas_arr, delta_arr, t0, tfinal,
+        omega, omega_args, phase, phase_args, kvec, tol)
+    phi_out = phi_all[0] if scalar_input else phi_all
     result = PropagateResult(
         phi_final=phi_out, kvec=kvec,
         omega=omega, omega_args=omega_args,
         phase=phase, phase_args=phase_args,
-        dt=(tfinal - t0) / nsteps, error=error_est,
+        dt=dt_used, error=error_est,
     )
     if cache is not None:
         cache[cache_key] = result
@@ -487,7 +408,7 @@ def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
     single_results = _score_run(
         label=f"single-atom benchmark (n0={n0}, nf={nf})",
         ref_backend='scipy',
-        test_backends=('scipy', 'numba', 'cpp', 'gpu', 'metal'),
+        test_backends=('scipy', 'numba'),
         kvec=kvec, phi0=phi0, tfinal=tfinal, delta=delta,
         omega_args=omega_args, phase_args=phase_args,
         omegas=None, tol=tol, repeat=repeat,
@@ -501,7 +422,7 @@ def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
     batch_results = _score_run(
         label=f"batch benchmark (natoms={natoms})",
         ref_backend='numba',
-        test_backends=('numba', 'cpp', 'gpu', 'metal'),
+        test_backends=('numba',),
         kvec=kvec, phi0=phi0b, tfinal=tfinal, delta=deltas,
         omega_args=omega_args, phase_args=phase_args,
         omegas=omegas, tol=tol, repeat=repeat,
