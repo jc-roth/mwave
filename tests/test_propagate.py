@@ -42,14 +42,14 @@ def _gaussian_setup(n0=0, nf=5):
 
 def test_gaussian_agrees_with_scipy():
     """propagate(backend='numba') must match propagate(backend='scipy') to
-    within 1e-5 for a Gaussian pulse."""
+    within 1e-8 for a Gaussian pulse."""
     kvec, phi0, tfinal, delta, omega_args, phase_args = _gaussian_setup()
 
     res_rk = propagate(
         kvec, phi0, tfinal, delta,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=1.0, tol=1e-6, backend='numba',
+        omegas=1.0, backend='numba',
     )
 
     res_scipy = propagate(
@@ -62,7 +62,7 @@ def test_gaussian_agrees_with_scipy():
     assert isinstance(res_rk, PropagateResult)
     assert isinstance(res_scipy, PropagateResult)
     max_diff = float(np.max(np.abs(res_rk.phi_final - res_scipy.phi_final)))
-    assert max_diff < 1e-5, f"max diff vs scipy = {max_diff:.2e}"
+    assert max_diff < 1e-8, f"max diff vs scipy = {max_diff:.2e}"
 
 
 # ── Test 2: error estimate is self-consistent ────────────────────────────────
@@ -70,7 +70,7 @@ def test_gaussian_agrees_with_scipy():
 def test_error_consistent():
     """Returned error must be <= tol and dt must be a positive float."""
     kvec, phi0, tfinal, delta, omega_args, phase_args = _gaussian_setup()
-    tol = 1e-6
+    tol = 1e-10
 
     res = propagate(
         kvec, phi0, tfinal, delta,
@@ -97,7 +97,7 @@ def test_norm_conservation():
         omegas=1.0, backend='numba',
     )
     norm = float(np.sum(np.abs(res.phi_final) ** 2))
-    assert abs(norm - 1.0) < 1e-7, f"norm deviation = {abs(norm - 1.0):.2e}"
+    assert abs(norm - 1.0) < 1e-10, f"norm deviation = {abs(norm - 1.0):.2e}"
 
 
 # ── Test 4: chaining (t0 != 0) ──────────────────────────────────────────────
@@ -110,7 +110,7 @@ def test_chaining():
         kvec, phi0, tfinal, delta,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=1.0, t0=0.0, tol=1e-8, backend='numba',
+        omegas=1.0, t0=0.0, backend='numba',
     )
 
     tmid = tfinal / 2.0
@@ -118,17 +118,17 @@ def test_chaining():
         kvec, phi0, tmid, delta,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=1.0, t0=0.0, tol=1e-8, backend='numba',
+        omegas=1.0, t0=0.0, backend='numba',
     )
     res_chain = propagate(
         kvec, res_mid.phi_final, tfinal, delta,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=1.0, t0=tmid, tol=1e-8, backend='numba',
+        omegas=1.0, t0=tmid, backend='numba',
     )
 
     max_diff = float(np.max(np.abs(res_full.phi_final - res_chain.phi_final)))
-    assert max_diff < 1e-5, f"chaining disagreement = {max_diff:.2e}"
+    assert max_diff < 1e-8, f"chaining disagreement = {max_diff:.2e}"
 
 
 # ── Test 5: arbitrary (non-constant) phase ───────────────────────────────────
@@ -152,7 +152,7 @@ def test_arbitrary_phase():
         kvec, phi0, tfinal, delta,
         omega_py, omega_args,
         phase_py, phase_args,
-        omegas=1.0, tol=1e-6, backend='numba',
+        omegas=1.0, backend='numba',
     )
 
     @_jit(_f64(_f64, _f64[:]), nopython=True)
@@ -167,7 +167,7 @@ def test_arbitrary_phase():
     )
 
     max_diff = float(np.max(np.abs(res_rk.phi_final - res_scipy.phi_final)))
-    assert max_diff < 1e-5, f"arbitrary-phase disagreement = {max_diff:.2e}"
+    assert max_diff < 1e-8, f"arbitrary-phase disagreement = {max_diff:.2e}"
 
 
 # ── Test 6: batch mode agrees with N independent single-atom calls ───────────
@@ -184,7 +184,7 @@ def test_batch_mode_agrees_with_single_atom():
         kvec, phi0_batch, tfinal, deltas,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=omegas, tol=1e-6, backend='numba',
+        omegas=omegas, backend='numba',
     )
     assert res_batch.phi_final.shape == (natoms, len(kvec))
 
@@ -193,10 +193,10 @@ def test_batch_mode_agrees_with_single_atom():
             kvec, phi0, tfinal, deltas[i],
             omega_fnc_gaussian, omega_args,
             phase_fnc_constant, phase_args,
-            omegas=omegas[i], tol=1e-6, backend='scipy',
+            omegas=omegas[i], backend='scipy',
         )
         max_diff = float(np.max(np.abs(res_batch.phi_final[i] - res_single.phi_final)))
-        assert max_diff < 1e-7, (
+        assert max_diff < 1e-8, (
             f"atom {i}: batch vs single-atom diff = {max_diff:.2e}")
 
 
@@ -212,7 +212,7 @@ def test_omegas_scaling():
         kvec, phi0, tfinal, delta,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=scale, tol=1e-8, backend='numba',
+        omegas=scale, backend='numba',
     )
 
     # Reference: scale baked into omega_args
@@ -222,7 +222,7 @@ def test_omegas_scaling():
         kvec, phi0, tfinal, delta,
         omega_fnc_gaussian, omega_args_scaled,
         phase_fnc_constant, phase_args,
-        omegas=1.0, tol=1e-8, backend='numba',
+        omegas=1.0, backend='numba',
     )
 
     max_diff = float(np.max(np.abs(res_scaled.phi_final - res_ref.phi_final)))
@@ -247,7 +247,7 @@ def test_batch_norm_conservation():
     )
     norms = np.sum(np.abs(res.phi_final) ** 2, axis=1)
     max_dev = float(np.max(np.abs(norms - 1.0)))
-    assert max_dev < 1e-7, f"max norm deviation across batch = {max_dev:.2e}"
+    assert max_dev < 1e-8, f"max norm deviation across batch = {max_dev:.2e}"
 
 
 # ── Test 9: NumericBraggInterferometer end-to-end ───────────────────────────
@@ -296,7 +296,7 @@ def test_propagate_with_interferometer():
             kvec, phi0, t_start + t_bragg, delta_val,
             omega_py, omega_args,
             phase_py, phase_args,
-            omegas=1.0, t0=t_start, tol=1e-6, backend='numba',
+            omegas=1.0, t0=t_start, backend='numba',
             cache=_rk_cache,
         )
         return res.phi_final[int(np.argmin(np.abs(kvec - k_final)))]
@@ -357,7 +357,7 @@ def test_propagate_with_interferometer():
     for port in output_ports:
         pop_rk  = float(pop_func(port, [delta]))
         pop_ref = float(pop_func_ref(port, [delta]))
-        assert abs(pop_rk - pop_ref) < 1e-4, (
+        assert abs(pop_rk - pop_ref) < 1e-8, (
             f"Port {port}: rk={pop_rk:.6f}, ref={pop_ref:.6f}, "
             f"diff={abs(pop_rk - pop_ref):.2e}"
         )
