@@ -38,7 +38,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/mwave"]
-exclude = ["src/mwave/interpolation.py", "src/mwave/integrate/xintegrate.py"]
+exclude = ["src/mwave/integrate/xintegrate.py"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["src/mwave/interpolation.py", "src/mwave/integrate/xintegrate.py"]
+exclude = ["src/mwave/integrate/xintegrate.py"]
