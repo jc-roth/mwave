@@ -1,11 +1,10 @@
 """CUDA/GPU backend for bloch_rk4.
 
-Contains:
-- CUDA source template                        (_CUDA_BLOCH_SOURCE_TMPL)
-- Compiled kernel cache                       (_bloch_gpu_kernels_cache)
-- Power-of-two helper                         (_next_pow2)
-- Compile-on-first-use helper                 (_compile_bloch_gpu)
-- Cache-aware ensure helper                   (_ensure_bloch_gpu)
+Public entry point: :py:func:`_ensure_bloch_gpu`, which compiles the CUDA
+source via NVRTC on first use (cached per ``N``) and returns the
+``(bloch_ep_precompute_T, bloch_rk4_noFP64_T)`` raw kernels.  Also exports
+:py:func:`_next_pow2`, the threadblock-size helper used by both the GPU
+and Metal backends.
 """
 
 import ctypes as _ctypes

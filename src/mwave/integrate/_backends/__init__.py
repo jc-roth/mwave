@@ -16,26 +16,9 @@ from ._numba import (
     _rk45_dp_step,
     _rk45_bloch_adaptive,
 )
-from ._cpp import (
-    _CPP_BUILD_DIR,
-    _CPP_BLOCH_SOURCE_TMPL,
-    _bloch_cpp_libs,
-    _compile_bloch_cpp,
-    _ensure_bloch_cpp,
-)
-from ._gpu import (
-    _CUDA_BLOCH_SOURCE_TMPL,
-    _bloch_gpu_kernels_cache,
-    _next_pow2,
-    _compile_bloch_gpu,
-    _ensure_bloch_gpu,
-)
-from ._metal import (
-    _METAL_BLOCH_SOURCE_TMPL,
-    _bloch_metal_cache,
-    _compile_bloch_metal,
-    _ensure_bloch_metal,
-)
+from ._cpp import _ensure_bloch_cpp
+from ._gpu import _next_pow2, _ensure_bloch_gpu
+from ._metal import _ensure_bloch_metal
 
 
 # ── Shared utilities ──────────────────────────────────────────────────────────

@@ -1,11 +1,8 @@
 """C++ OpenMP backend for bloch_rk4.
 
-Contains:
-- C++ source template                         (_CPP_BLOCH_SOURCE_TMPL)
-- Build directory path                        (_CPP_BUILD_DIR)
-- Compiled library cache                      (_bloch_cpp_libs)
-- Compile-on-first-use helper                 (_compile_bloch_cpp)
-- Cache-aware ensure helper                   (_ensure_bloch_cpp)
+Public entry point: :py:func:`_ensure_bloch_cpp`, which compiles the C++
+source on first use (cached per ``N``) and returns a ctypes-loaded library
+exposing ``rk4_bloch_f32``.
 """
 
 import ctypes as _ctypes

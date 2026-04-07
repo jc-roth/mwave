@@ -1,10 +1,8 @@
 """Metal/Apple Silicon backend for bloch_rk4.
 
-Contains:
-- Metal MSL source template                   (_METAL_BLOCH_SOURCE_TMPL)
-- Compiled kernel cache                       (_bloch_metal_cache)
-- Compile-on-first-use helper                 (_compile_bloch_metal)
-- Cache-aware ensure helper                   (_ensure_bloch_metal)
+Public entry point: :py:func:`_ensure_bloch_metal`, which compiles the MSL
+source via metalcompute on first use (cached per ``N``) and returns
+``(device, kernel_function)``.
 
 Design notes
 ------------
