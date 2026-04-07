@@ -479,7 +479,7 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args,
 
 # ── Backend benchmark ─────────────────────────────────────────────────────────
 
-def score_backends(n0=0, nf=5, natoms=8, tol=1e-6, repeat=3):
+def score_backends(n0=0, nf=5, natoms=1000, tol=1e-6, repeat=3):
     """Benchmark all available :func:`propagate` backends and return a ranked
     table.
 

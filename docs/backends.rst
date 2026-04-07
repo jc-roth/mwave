@@ -1,7 +1,7 @@
 Integration backends
 ####################
 
-The :py:func:`mwave.integrate.propagate` function solves the Bloch Hamiltonian for Bragg atom diffraction. Five backends are available, each implementing the same physics but targeting different hardware. The backend can be selected explicitly via the ``backend`` parameter or left as ``None`` for automatic selection.
+The :py:func:`mwave.integrate.propagate` function integrates the Hamiltonian for Bragg diffraction and Bloch oscillations. Five backends are available targeting different hardware. The backend can be selected explicitly via the ``backend`` parameter or left as ``None`` for default selection.
 
 .. contents:: On this page
    :local:
@@ -10,40 +10,39 @@ The :py:func:`mwave.integrate.propagate` function solves the Bloch Hamiltonian f
 Equations of motion
 ===================
 
-All backends integrate the same physics: an atom whose momentum is restricted to a discrete ladder of states :math:`|k\rangle` spaced by two photon recoils, coupled by a two-photon drive with time-dependent Rabi frequency :math:`\Omega(t)` and phase :math:`\theta(t)`, and detuned from resonance by :math:`\delta`. Units throughout are :math:`\hbar = 1` with time measured in :math:`1/\omega_\text{r}` (inverse recoil frequency).
-
-Wavefunction evolution (Schrodinger)
-------------------------------------
-
-The wavefunction backends (every backend except the density-matrix mode of ``scipy``) integrate
+The equations of motion are derived from the Schrodinger equation for the Hamiltonian describing Bragg diffraction and Bloch oscillations, which yields a system of ODEs:
 
 .. math::
 
    \frac{d|\phi\rangle}{dt}=i\,\frac{\Omega(t)}{2}\left[e^{i(\delta t+\theta(t))}e^{i(-4k-4)t}|k\rangle\langle k+2| + e^{-i(\delta t+\theta(t))}e^{i(4k-4)t}|k\rangle\langle k-2|\right]|\phi\rangle
 
-where :math:`k` indexes momentum states spaced by two photon recoils. The kinematic factors :math:`e^{i(\pm 4k \mp 4)t}` arise from working in the interaction picture relative to the kinetic Hamiltonian.
+where :math:`k` indexes momentum states spaced by two photon recoils, :math:`\Omega(t)` is the time-dependent effective Rabi frequency, :math:`\theta(t)` is the time-dependent phase, and :math:`\delta` is the two-photon detuning. The :py:func:`mwave.integrate.propagate` function integrates this system of ODEs using a different method depending on the selected backend. These different methods are detailed below.
 
-When the ``scipy`` backend is invoked with ``transformed=True``, the kinetic term is folded back into the propagated state and the equation becomes
+The :py:func:`mwave.integrate.propagate` function accepts an argument :code:`transformed`. If :code:`transformed=True` then the right hand side is evaluated in the following frame:
 
 .. math::
 
    \frac{d|\phi\rangle}{dt}=-i\,k^2|k\rangle\langle k|\phi\rangle + i\,\frac{\Omega(t)}{2}\left[e^{i(\delta t+\theta(t))}|k\rangle\langle k+2| + e^{-i(\delta t+\theta(t))}|k\rangle\langle k-2|\right]|\phi\rangle
 
-Density-matrix evolution (Von Neumann)
---------------------------------------
+Density-matrix evolution
+------------------------
 
-When the ``scipy`` backend is invoked with a non-``None`` ``Gamma_sps``, it instead integrates the Von Neumann equation :math:`d\rho/dt = -i[H,\rho] + \mathcal{L}[\rho]` for the Hamiltonian
+When the ``scipy`` backend is invoked with ``Gamma_sps``, it integrates the Von Neumann evolution equation (i.e. :math:`[H,\rho]`) where
 
 .. math::
 
-   H=-\sum_{k}\left[\frac{\Omega(t)}{2}e^{i(\delta t+\theta(t))}e^{i(-4k-4)t}|k\rangle\langle k+2| + \frac{\Omega(t)^*}{2}e^{-i(\delta t+\theta(t))}e^{i(4k-4)t}|k\rangle\langle k-2|\right]
+    H=-\hbar\sum_{k}\left[\frac{\Omega_\text{eff}(t)}{2}e^{i(\delta t+\theta(t))}e^{i\omega_\text{r}(-4k-4)}|k\rangle\langle k+2|+\frac{\Omega_\text{eff}(t)^*}{2}e^{-i(\delta t+\theta(t))}e^{i\omega_\text{r}(4k-4)}|k\rangle\langle k-2|\right]
+      
+where :math:`\hbar=1` and the sum over :math:`k` is limited to the values of :math:`k` defined by :code:`hkvec` and :code:`vkvec`.
+      
+The parameter :code:`rho` is supplied as a vector (this makes it compatible with :code:`scipy.integrate.solve_ivp`). This is then converted to a matrix via :code:`np.reshape(rho, (len(kvec), len(kvec)))` internally. The matrices :code:`hkvec` and :code:`vkvec` are composed of horizontal or vertical vectors of the momentum state grid stacked togeather.
 
-augmented by a phenomenological loss superoperator :math:`\mathcal{L}` that damps the off-diagonal elements of :math:`\rho` at rate :math:`\Gamma_\text{sps}/2` to model single-photon scattering.
+The parameter :code:`loss_mat` is the loss matrix.
 
 Backend selection
 =================
 
-When ``backend=None``, ``propagate`` chooses automatically:
+When ``backend=None``, ``propagate`` selects backends based on the shape of ``phi0``:
 
 - **Single-atom** input (1-D ``phi0``) |rarr| ``'scipy'``
 - **Batch** input (2-D ``phi0``) |rarr| ``'numba'``
@@ -59,15 +58,15 @@ To benchmark all available backends on your machine, call :py:func:`mwave.integr
    from mwave.integrate import score_backends
    score_backends()
 
-This runs a standard 5\ :math:`\hbar k` Bragg pulse with 8 atoms through each backend, reports wall-clock time, and flags any that are unavailable due to missing dependencies.
+This runs a standard 5\ :math:`\hbar k` Bragg pulse with 100 atoms through each backend, reports wall-clock time, and flags any that are unavailable due to missing dependencies. You can adjust the number of atoms included in the integration using the argument ``natoms=10000``.
 
 Integration strategies
 ======================
 
 The backends use two distinct integration strategies:
 
-Adaptive RK45 (scipy, numba)
-----------------------------
+Adaptive step-size Runge-Kutta (scipy, numba)
+---------------------------------------------
 
 The ``scipy`` and ``numba`` backends use adaptive step-size control. At each step the integrator estimates the local error and adjusts the step size to keep it within tolerance.
 
