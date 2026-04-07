@@ -7,6 +7,39 @@ The :py:func:`mwave.integrate.propagate` function solves the Bloch Hamiltonian f
    :local:
    :depth: 2
 
+Equations of motion
+===================
+
+All backends integrate the same physics: an atom whose momentum is restricted to a discrete ladder of states :math:`|k\rangle` spaced by two photon recoils, coupled by a two-photon drive with time-dependent Rabi frequency :math:`\Omega(t)` and phase :math:`\theta(t)`, and detuned from resonance by :math:`\delta`. Units throughout are :math:`\hbar = 1` with time measured in :math:`1/\omega_\text{r}` (inverse recoil frequency).
+
+Wavefunction evolution (Schrodinger)
+------------------------------------
+
+The wavefunction backends (every backend except the density-matrix mode of ``scipy``) integrate
+
+.. math::
+
+   \frac{d|\phi\rangle}{dt}=i\,\frac{\Omega(t)}{2}\left[e^{i(\delta t+\theta(t))}e^{i(-4k-4)t}|k\rangle\langle k+2| + e^{-i(\delta t+\theta(t))}e^{i(4k-4)t}|k\rangle\langle k-2|\right]|\phi\rangle
+
+where :math:`k` indexes momentum states spaced by two photon recoils. The kinematic factors :math:`e^{i(\pm 4k \mp 4)t}` arise from working in the interaction picture relative to the kinetic Hamiltonian.
+
+When the ``scipy`` backend is invoked with ``transformed=True``, the kinetic term is folded back into the propagated state and the equation becomes
+
+.. math::
+
+   \frac{d|\phi\rangle}{dt}=-i\,k^2|k\rangle\langle k|\phi\rangle + i\,\frac{\Omega(t)}{2}\left[e^{i(\delta t+\theta(t))}|k\rangle\langle k+2| + e^{-i(\delta t+\theta(t))}|k\rangle\langle k-2|\right]|\phi\rangle
+
+Density-matrix evolution (Von Neumann)
+--------------------------------------
+
+When the ``scipy`` backend is invoked with a non-``None`` ``Gamma_sps``, it instead integrates the Von Neumann equation :math:`d\rho/dt = -i[H,\rho] + \mathcal{L}[\rho]` for the Hamiltonian
+
+.. math::
+
+   H=-\sum_{k}\left[\frac{\Omega(t)}{2}e^{i(\delta t+\theta(t))}e^{i(-4k-4)t}|k\rangle\langle k+2| + \frac{\Omega(t)^*}{2}e^{-i(\delta t+\theta(t))}e^{i(4k-4)t}|k\rangle\langle k-2|\right]
+
+augmented by a phenomenological loss superoperator :math:`\mathcal{L}` that damps the off-diagonal elements of :math:`\rho` at rate :math:`\Gamma_\text{sps}/2` to model single-photon scattering.
+
 Backend selection
 =================
 
