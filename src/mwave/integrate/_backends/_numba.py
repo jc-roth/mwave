@@ -172,7 +172,7 @@ def _rk45_dp_step(phi_in, phi_out, phi_err,
 
 def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
                           omega_envelope, omega_args, phase, phase_args,
-                          kvec, tol):
+                          kvec, tol, max_steps=200_000):
     """Adaptive Dormand-Prince RK45 integration of the batched Bloch equation.
 
     Replaces the pilot + fixed-step Richardson loop for the ``'numba'``
@@ -191,6 +191,10 @@ def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
     :param phase_args: Extra arguments for ``phase``.
     :param kvec:    ``(N,) float64`` — momentum-state grid.
     :param tol:     Maximum allowable global error.
+    :param max_steps: Hard cap on the number of step *attempts* (default
+        ``200_000``).  This is a runaway-loop safety net, not a target — a
+        typical Bragg-pulse run takes ~50–500 steps.  If the cap is reached
+        the integrator returns the partial result with a ``RuntimeWarning``.
     :returns: ``(phi_final, h_last, err_last)`` where ``h_last`` is the last
         accepted step size and ``err_last`` is the last normalised error.
     """
@@ -216,7 +220,7 @@ def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
     MAX_FACTOR = 10.0
     H_MIN      = T * 1e-12
 
-    for _step in range(200000):
+    for _step in range(max_steps):
         if t >= tfinal - 1e-12 * T:
             break
 
