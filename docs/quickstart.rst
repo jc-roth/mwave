@@ -1,7 +1,7 @@
 Quickstart
 ##########
 
-:code:`mwave` is a python library designed to help explore new matterwave interferometer geometries. :code:`mwave` also provides functions to numerically solve the Bloch Hamiltonian that describes Bragg diffraction and Bloch oscillations.
+:code:`mwave` is a python library designed to help explore new matterwave interferometer geometries. :code:`mwave` also provides functions to numerically solve the Hamiltonian that describes Bragg diffraction and Bloch oscillations.
 
 Installation
 ============
@@ -10,7 +10,7 @@ Stable releases of :code:`mwave` can be downloaded from `Github`_ or via:
 
 .. _Github: https://github.com/jc-roth/mwave/releases
 
-.. code-block::
+.. code-block:: bash
 
    pip install git+https://github.com/jc-roth/mwave@v3.0.0
 
@@ -20,11 +20,11 @@ A first example
 Defining an interferometer geometry
 -----------------------------------
 
-:code:`mwave` is losely broken up into two parts: a module for symbolically defining arbitrary interferometer geometries, and a module for numerically calculating Bragg and Bloch processes. As an example we will use the library to explore a Mach-Zender interferometer geometry.
+:code:`mwave` is losely broken up into three parts: a module for symbolically defining arbitrary interferometer geometries, a module for numerically defining arbitrary interferometer geometries, and a module for numerically integrating Bragg and Bloch processes. As an example we will use the library to explore a Mach-Zender interferometer geometry.
 
 First we will import the required libraries
 
-.. code:: ipython3
+.. code-block:: python
 
     from mwave import symbolic as msym
     from mwave import integrate as mint
@@ -36,7 +36,7 @@ First we will import the required libraries
 the interferometer phase. Therefore we must define the symbols we want
 to use symbolically
 
-.. code:: ipython3
+.. code-block:: python
 
     m, c, hbar, k, g, delta, n, T, t_traj = sp.symbols('m c hbar k g delta n T t_traj', real=True)
     k_eff = 2*k
@@ -45,7 +45,7 @@ Performing certain operations in mwave requires the user to set certain
 constants. In this example we will need to set the mass, speed of light,
 the Planck constant, and another variable called :code:`t_traj`.
 
-.. code:: ipython3
+.. code-block:: python
 
     msym.set_constants(m=m, c=c, hbar=hbar, t_traj=t_traj)
 
@@ -57,7 +57,7 @@ light, and the Planck constant in order to define our unitary operators. :code:`
 Now we are ready to define unitary operators representing the beamsplitter,
 free evolution, and mirror that make up the Mach-Zender interferometer:
 
-.. code:: ipython3
+.. code-block:: python
 
     beamsplitter = msym.Beamsplitter(0, n, delta, k_eff, include_half_pi_shift=True)
     mirror = msym.Mirror(0, n, delta, k_eff)
@@ -66,7 +66,7 @@ free evolution, and mirror that make up the Mach-Zender interferometer:
 Now that we have defined our unitary operators we can define a new
 interferometer object and apply our unitary operators to it.
 
-.. code:: ipython3
+.. code-block:: python
 
     ifr = msym.Interferometer()
     ifr.apply(beamsplitter)
@@ -83,7 +83,7 @@ Now lets compute the phase of the interferometer. To do this we must
 first call the :py:meth:`mwave.symbolic.Interferometer.interfere` method to
 check which interferometer paths interfere.
 
-.. code:: ipython3
+.. code-block:: python
 
     interfering_paths = ifr.interfere()
     print(f'Found {len(interfering_paths)} interfering paths.')
@@ -99,7 +99,7 @@ This is expected as a Mach-Zender interferometer has two output ports.
 Now that we have computed the interfering paths we can compute the phase
 difference between each interfering output:
 
-.. code:: ipython3
+.. code-block:: python
 
     phase_differences = ifr.phases()
     for phase_difference in phase_differences:
@@ -122,7 +122,7 @@ Next we can use the :py:func:`mwave.integrate.propagate` function to integrate s
 
 :py:func:`~mwave.integrate.propagate` takes the momentum grid, initial state, final time, two-photon detuning, and callable functions for the Rabi envelope and drive phase. For a Gaussian pulse we use the built-in :py:func:`~mwave.integrate.omega_fnc_gaussian` and :py:func:`~mwave.integrate.phase_fnc_constant`.
 
-.. code:: ipython3
+.. code-block:: python
 
     n0, nf = 0, 4
     sigma = 0.5
@@ -146,17 +146,13 @@ Next we can use the :py:func:`mwave.integrate.propagate` function to integrate s
 
 The :py:meth:`~mwave.integrate.PropagateResult.plot` method produces a three-panel figure showing the population in each momentum state, the Rabi frequency profile, and the drive phase as a function of time.
 
-.. note::
-
-   The plots shown here may need to be regenerated after updating to the latest API.
-
 .. image:: static/output_16_0.png
 
 .. image:: static/output_16_1.png
 
 The population at any specific momentum state can also be queried with :py:meth:`~mwave.integrate.PropagateResult.population`:
 
-.. code:: ipython3
+.. code-block:: python
 
     print(f"Population in n={nf}: {result.population(2*nf):.4f}")
 
@@ -169,11 +165,17 @@ See the `Integrating the Bloch Hamiltonian`_ section for other examples of evolv
 Combining the interferometer model with simulation
 --------------------------------------------------
 
+.. note::
+
+   This section describes how to integrate numeric calculations with the symbolic interferometer module. This is slightly awkward. To simulate interferometers numerically with a more natural interface please see the `numeric interferometer example`_.
+
+.. _`numeric interferometer example`: examples/numeric_interferometer_usage.ipynb
+
 Lets say that we want to study the systematics introduced by the Bragg diffraction process in our Mach-Zender geometry. To do this we need to combine the numerical computation we've made using :py:func:`mwave.integrate.propagate` with our symbolic representation of the interferometer geometry. This is accomplished in a straightforward way by defining custom :py:class:`mwave.symbolic.Unitary` classes that inherit from the :py:class:`mwave.symbolic.Beamsplitter` and :py:class:`mwave.symbolic.Mirror` classes.
 
 Our beamsplitters will couple momentum states :math:`0` and :math:`n`
 
-.. code:: ipython3
+.. code-block:: python
 
     class BraggBeamsplitter(msym.Beamsplitter):
 
@@ -206,7 +208,7 @@ Our beamsplitters will couple momentum states :math:`0` and :math:`n`
 Now we can define new unitary operators using these definitions and
 apply them to an interferometer.
 
-.. code:: ipython3
+.. code-block:: python
 
     bragg_beamsplitter = BraggBeamsplitter(0, n, delta, k_eff)
     bragg_mirror = BraggMirror(0, n, delta, k_eff)
@@ -222,7 +224,7 @@ Now we will make use of the :py:meth:`mwave.symbolic.Interferometer.get_ports`
 function to automatically map the interferometer outputs into their
 respective ports.
 
-.. code:: ipython3
+.. code-block:: python
 
     ifr_num.interfere()
     port_dict, junk_port, no_port = ifr_num.get_ports({n: 'upper', 0: 'lower'})
@@ -232,7 +234,7 @@ each port and generate functions that numerically calculate their
 respective complex amplitudes. To generate these functions we must also
 set our symbolic variables to numeric values.
 
-.. code:: ipython3
+.. code-block:: python
 
     subs = {hbar:1, k:1, m: 1, g: 1, n: 4, delta: 4*n, T:5}
     
@@ -254,7 +256,7 @@ any of the analytically derived phases.
 Finally we can compute and plot how the populations vary as a function
 of the input particle velocity
 
-.. code:: ipython3
+.. code-block:: python
 
     vs = np.linspace(-0.5, 0.5, 50)
     upper = np.full_like(vs, np.nan)
@@ -288,7 +290,7 @@ See the :doc:`/examples/systematics/sci_diffraction_phase_calculation` section f
 Sometimes we might be interested in having more direct control over the phases
 that contribute to this numerical calculation. To help with this :code:`mwave` provides the code generation function :py:meth:`mwave.symbolic.Interferometer.generate_code_outline`:
 
-.. code:: ipython3
+.. code-block:: python
 
     port_dict, junk_port, no_port = ifr.get_ports({n: 'upper', 0: 'lower'})
     print(ifr.generate_code_outline(port_dict))
@@ -342,12 +344,3 @@ that contribute to this numerical calculation. To help with this :code:`mwave` p
         return poplower, popupper
 
 We can see that this outline computes the wavefunctions output by the interferometer. We can use this outline to start incorporating additional interferometer effects.
-
-Planned improvements
-====================
-
-Several changes are planned for the future:
-
-- Support installation from Pypi
-- Better code generation
-- Adding a variable in :py:class:`mwave.symbolic.InterferometerNode` to track the internal state.
