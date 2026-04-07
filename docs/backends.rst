@@ -60,6 +60,10 @@ To benchmark all available backends on your machine, call :py:func:`mwave.integr
 
 This runs a standard 5\ :math:`\hbar k` Bragg pulse with 100 atoms through each backend, reports wall-clock time, and flags any that are unavailable due to missing dependencies. You can adjust the number of atoms included in the integration using the argument ``natoms=10000``.
 
+.. note::
+
+  To score from the command line run ``python -c "from mwave.integrate import score_backends; score_backends()"``
+
 Integration strategies
 ======================
 
