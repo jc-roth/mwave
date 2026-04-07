@@ -11,7 +11,6 @@ from ._backends import (
     _run_scipy,
 )
 
-
 class PropagateResult:
     """Result returned by :py:func:`propagate`.
 
@@ -89,7 +88,6 @@ class PropagateResult:
         ax3.set_xlabel(r'time [$1/\omega_r$]')
         plt.tight_layout()
         return fig
-
 
 @jit(float64(float64, float64[:]))
 def omega_fnc_gaussian(t, args):
@@ -174,69 +172,47 @@ def make_phi(kvec, n0):
     phi0[k0_idx] = 1
     return phi0
 
-# ── Unified propagator ──────────────────────────────────────────────────────
-
-def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args,
-              omegas=None, t0=0.0, backend=None,
+def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, omegas=None, t0=0.0, backend=None,
               # scipy options
-              dense=False, method='DOP853', atol=1e-10, rtol=1e-10,
-              max_step=0.1, transformed=False, Gamma_sps=None,
+              dense=False, method='DOP853', atol=1e-10, rtol=1e-10, max_step=0.1, transformed=False, Gamma_sps=None,
               # RK45 options
-              tol=1e-6, max_halvings=6, pilot_rtol=1e-8, cache=None):
-    """Propagate a wavefunction under the atom-light coupling Hamiltonian.
-
-    This function unifies single-atom and batched multi-atom integration.
-    The backend is selected automatically based on input dimensionality,
-    or can be chosen explicitly.
-
-    The Rabi frequency seen by atom *i* is
-    ``omega(t, omega_args) * omegas[i]``.  For single-atom calls ``omegas``
-    defaults to ``1.0`` so that ``omega`` alone sets the Rabi frequency.
+              tol=1e-10, max_halvings=6, pilot_rtol=1e-10, cache=None):
+    """Evolves the provided wavefunction using the equations of motion described in :doc:`/backends`. The user can provide a single atom wavefunction (in which case the ``scipy`` backend is used), or a batch of wavefunctions to be integrated in parallel (in which case the ``numba`` backend is used). The wavefunction batching provided by the function is significantly more efficient than looping over a single atom wavefunction call multiple times.
 
     **Backends**
 
-    - ``'scipy'`` — adaptive ``solve_ivp`` (default for single-atom).
-      Supports ``dense``, ``transformed``, and ``Gamma_sps``.
-      Single-atom only.
+    - ``'scipy'`` — adaptive ``solve_ivp`` (default for single-atom). Supports ``dense`` output, the ``transformed`` frame, and spontaneous emission via ``Gamma_sps``. Unavailable for batch mode.
     - ``'numba'`` — Numba RK45 with ``prange`` (default for batch).
     - ``'cpp'`` — C++ OpenMP kernel.
     - ``'gpu'`` — CUDA kernel via CuPy.
     - ``'metal'`` — Apple Silicon GPU via metalcompute.
 
-    :param kvec: Momentum-state grid ``(N,) float64``.
-    :param phi0: Initial wavefunction.  ``(N,)`` for single-atom or
-        ``(natoms, N)`` for batch mode.
-    :param tfinal: Final integration time.
-    :param delta: Two-photon detuning — scalar for single-atom, ``(natoms,)``
-        for batch mode.
+    :param kvec: The vector of momentum states to simulate ``(N,) float64``.
+    :param phi0: The initial value of phi. ``(N,)`` for single-atom or ``(natoms, N)`` for batch mode.
+    :param tfinal: The final time to integrate to.
+    :param delta: The two-photon detuning. Scalar for single-atom, ``(natoms,)`` for batch mode.
     :param omega: Callable ``omega(t, omega_args) -> float``.
-    :param omega_args: Extra arguments forwarded to *omega*.
+    :param omega_args: Extra arguments forwarded to ``omega``.
     :param phase: Callable ``phase(t, phase_args) -> float``.
-    :param phase_args: Extra arguments forwarded to *phase*.
-    :param omegas: Per-atom Rabi frequency scale.  Scalar or ``(natoms,)``.
-        Defaults to ``1.0`` for single-atom, ``np.ones(natoms)`` for batch.
+    :param phase_args: Extra arguments forwarded to ``phase``.
+    :param omegas: Per-atom Rabi frequency scale.  Scalar or ``(natoms,)``. Defaults to ``1.0`` for single-atom, ``np.ones(natoms)`` for batch.
     :param t0: Integration start time (default ``0.0``).
-    :param backend: ``'scipy'``, ``'numba'``, ``'cpp'``, ``'gpu'``,
-        ``'metal'``, or ``None`` (auto-select).
-    :param dense: Request dense (interpolatable) output from scipy
-        (default ``False``).  Requires ``backend='scipy'``.
-    :param method: ODE method for scipy (default ``'DOP853'``).
-    :param atol: Absolute tolerance for scipy (default ``1e-10``).
-    :param rtol: Relative tolerance for scipy (default ``1e-10``).
-    :param max_step: Maximum step size for scipy (default ``0.1``).
-    :param transformed: Use the transformed frame in scipy (default ``False``).
-    :param Gamma_sps: Single-photon scattering rate for density-matrix
-        evolution in scipy (default ``None``).
+    :param backend: ``'scipy'``, ``'numba'``, ``'cpp'``, ``'gpu'``, ``'metal'``, or ``None``. If ``None``, ``scipy`` will be selected for a single wavefunction and ``numba`` will be selected for a batch of wavefunctions.
+    :param dense: If true dense output is returned (i.e. the integration result can be queried for any intermediate time). Requires ``backend='scipy'``.
+    :param method: ODE method for ``backend='scipy'`` (default ``'DOP853'``). Ignored for other backends.
+    :param atol: Absolute tolerance for ``backend='scipy'`` (default ``1e-10``). Ignored for other backends.
+    :param rtol: Relative tolerance for ``backend='scipy'`` (default ``1e-10``). Ignored for other backends.
+    :param max_step: Maximum step size for ``backend='scipy'`` (default ``0.1``). Ignored for other backends.
+    :param transformed: Use the transformed frame for ``backend='scipy'`` (default ``False``). Ignored for other backends.
+    :param Gamma_sps: Single-photon scattering rate for density-matrix evolution for ``backend='scipy'`` (default ``None``). Ignored for other backends.
     :param tol: Error tolerance for the RK45 backends (default ``1e-6``).
-    :param max_halvings: Maximum Richardson halvings for ``'cpp'``/``'gpu'``/
-        ``'metal'`` (default ``6``).
-    :param pilot_rtol: Pilot RK45 tolerance for ``'cpp'``/``'gpu'``/
-        ``'metal'`` (default ``1e-8``).
+    :param max_halvings: Maximum Richardson halvings for ``'cpp'``/``'gpu'``/``'metal'`` (default ``6``).
+    :param pilot_rtol: Pilot RK45 tolerance for ``'cpp'``/``'gpu'``/``'metal'`` (default ``1e-8``).
     :param cache: Optional ``dict`` for memoising RK45 results.
-    :returns: A :class:`PropagateResult`.
-    """
+    :returns: A :class:`PropagateResult`."""
+
     # ── Detect single vs batch ────────────────────────────────────────────
-    scalar_input = (np.ndim(phi0) == 1)
+    scalar_input = np.ndim(phi0) == 1
 
     if scalar_input:
         phi0 = np.asarray(phi0, dtype=np.complex128)
@@ -406,10 +382,7 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args,
         cache[cache_key] = result
     return result
 
-
-# ── Backend benchmark ─────────────────────────────────────────────────────────
-
-def score_backends(n0=0, nf=5, natoms=1000, tol=1e-6, repeat=3):
+def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
     """Benchmark all available :func:`propagate` backends and return a ranked
     table.
 
