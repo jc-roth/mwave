@@ -207,7 +207,7 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
     :param tol: Error tolerance for the RK45 backends (default ``1e-6``).
     :param max_halvings: Maximum Richardson halvings for ``'cpp'``/``'gpu'``/``'metal'`` (default ``6``).
     :param pilot_rtol: Pilot RK45 tolerance for ``'cpp'``/``'gpu'``/``'metal'`` (default ``1e-8``).
-    :param cache: Optional ``dict`` for memoising RK45 results.
+    :param cache: Optional ``dict`` for memoising results from the non-``scipy`` backends. The cache key incorporates every input that affects the output (``phi0``, ``delta``, ``omegas``, ``kvec``, ``omega_args``, ``phase_args``, ``t0``, ``tfinal``, ``backend``, ``tol``, ``max_halvings``, ``pilot_rtol``) along with the ``omega`` and ``phase`` callables themselves. The callables are hashed by object identity, so to get cache hits across calls you must reuse the *same* function object. Wrapping the same underlying function in a fresh ``lambda`` on each call will produce a distinct object and miss the cache. Define the wrapper once and reuse it.
     :returns: A :class:`PropagateResult`."""
 
     # Validate shape of inputs
@@ -287,8 +287,14 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
         omegas_arr = omegas
 
     if cache is not None:
-        cache_key = (phi0_2d.tobytes(), delta_arr.tobytes(),
-                     float(t0), float(tfinal), backend)
+        cache_key = (
+            phi0_2d.tobytes(), delta_arr.tobytes(), omegas_arr.tobytes(),
+            np.asarray(kvec).tobytes(),
+            omega, np.asarray(omega_args).tobytes(),
+            phase, np.asarray(phase_args).tobytes(),
+            float(t0), float(tfinal), backend,
+            float(tol), int(max_halvings), float(pilot_rtol),
+        )
         if cache_key in cache:
             return cache[cache_key]
 
@@ -408,7 +414,7 @@ def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
         kvec, phi0b, tfinal, deltas,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=omegas, tol=tol, backend='scipy',
+        omegas=omegas, tol=tol, backend='numba',
     )
     phi_ref = ref.phi_final
 
