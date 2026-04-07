@@ -5,7 +5,6 @@ from matplotlib import pyplot as plt
 import warnings
 from ._backends import (
     _preeval_rk4_arrays,
-    _pilot_dt,
     _rk4_bloch_single_kernel,
     _rk45_bloch_adaptive,
     _run_batched,
@@ -415,12 +414,17 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args,
     delta_worst = float(np.max(np.abs(delta_arr)))
     max_omega = float(np.max(np.abs(omegas_arr)))
 
-    def _scaled_envelope(t, args):
-        return max_omega * float(omega(t, args))
-
-    dt_pilot = _pilot_dt(t0, tfinal, delta_worst, _scaled_envelope, omega_args,
-                         phase, phase_args, pilot_rtol)
-    nsteps = max(int(np.ceil((tfinal - t0) / dt_pilot)), 1)
+    # Pilot integration via the scipy backend on the same kvec gives a
+    # step-size estimate for the fixed-step RK4 kernel.  The mean accepted
+    # step is conservative; Richardson extrapolation handles accuracy
+    # regardless of the starting nsteps estimate.
+    pilot_result = propagate(
+        kvec, phi0_2d[0], tfinal, delta_worst,
+        omega, omega_args, phase, phase_args,
+        omegas=max_omega, t0=t0, backend='scipy', method='RK45',
+        rtol=pilot_rtol, atol=pilot_rtol * 1e-3, max_step=np.inf,
+    )
+    nsteps = max(len(pilot_result.scipy_sol.t) - 1, 1)
 
     # Coarse integration
     h = (tfinal - t0) / nsteps

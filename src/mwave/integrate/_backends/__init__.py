@@ -9,7 +9,6 @@
 
 import ctypes as _ctypes
 import numpy as np
-from scipy.integrate import solve_ivp
 
 from ._scipy import _run_scipy
 
@@ -83,56 +82,6 @@ def _preeval_rk4_arrays(kvec, t0, nsteps, h, omega, omega_args, phase, phase_arg
     kinm_half = np.ascontiguousarray(np.exp(1j * np.outer(t_half, base_m)))
 
     return env_full, env_half, eph_full, eph_half, kinp_full, kinm_full, kinp_half, kinm_half
-
-
-def _pilot_dt(t0, tfinal, delta, omega, omega_args, phase, phase_args, rtol=1e-8):
-    """Determine a step-size suggestion via a cheap pilot RK45 integration.
-
-    Runs ``solve_ivp`` with method ``'RK45'`` and ``rtol=rtol`` on a minimal
-    three-state Bragg system ``[-2, 0, 2]``.  Returns the mean step accepted by
-    the adaptive solver, which gives a conservative estimate of the step size
-    needed by the fixed-step RK4 kernel.
-
-    Uses a plain-Python RHS so that ``omega`` and ``phase`` can be either
-    Numba JIT functions or ordinary Python callables.
-
-    :param t0: Start time.
-    :param tfinal: End time.
-    :param delta: Two-photon detuning.
-    :param omega: Callable ``omega(t, omega_args) -> float``.
-    :param omega_args: Extra arguments for ``omega``.
-    :param phase: Callable ``phase(t, phase_args) -> float``.
-    :param phase_args: Extra arguments for ``phase``.
-    :param rtol: Relative tolerance for the pilot integration.
-    :returns: Mean accepted step size as a float.
-    """
-    kvec3 = np.array([-2.0, 0.0, 2.0])
-    phi3  = np.array([0.0, 1.0, 0.0], dtype=np.complex128)
-
-    def _rhs3(t, phi):
-        phi_p1 = np.zeros(3, dtype=np.complex128)
-        phi_p1[:-1] = phi[1:]
-        phi_m1 = np.zeros(3, dtype=np.complex128)
-        phi_m1[1:]  = phi[:-1]
-        oval     = float(omega(t, omega_args))
-        phaseval = float(phase(t, phase_args))
-        ep  = np.exp( 1j * (delta * t + phaseval))
-        epc = np.exp(-1j * (delta * t + phaseval))
-        return (1j * oval / 2.0 *
-                (ep  * np.exp(1j * (-4.0 * kvec3 - 4.0) * t) * phi_p1 +
-                 epc * np.exp(1j * ( 4.0 * kvec3 - 4.0) * t) * phi_m1))
-
-    sol = solve_ivp(
-        _rhs3, [t0, tfinal], phi3,
-        method='RK45', rtol=rtol, atol=rtol * 1e-3, dense_output=False,
-    )
-    # Use the mean adaptive step size rather than the minimum.  The minimum
-    # can be orders-of-magnitude smaller than the typical step (e.g. when the
-    # solver briefly undershoots near a steep derivative) and leads to a
-    # catastrophically large initial nsteps.  Richardson extrapolation handles
-    # accuracy regardless of the starting nsteps estimate.
-    n_steps = max(len(sol.t) - 1, 1)
-    return float((tfinal - t0) / n_steps)
 
 
 def _run_batched(backend, phi0, deltas, omegas, h, t0,
