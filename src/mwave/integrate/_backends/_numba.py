@@ -245,7 +245,15 @@ def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
         tol_step = tol * h / T          # local budget that guarantees global <= tol
 
         if err_abs <= tol_step or h <= H_MIN:
-            # Accept
+            # Accept (either error is fine, or h is at the floor and we have
+            # no choice but to advance — warn in the latter case).
+            if err_abs > tol_step:
+                warnings.warn(
+                    f"propagate (numba): step floor h={h:.2e} reached with "
+                    f"err={err_abs:.2e} > tol_step={tol_step:.2e}; "
+                    "result may not satisfy tol.",
+                    RuntimeWarning, stacklevel=3,
+                )
             t      += h
             phi[:]  = phi_out
             h_last  = h
