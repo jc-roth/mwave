@@ -79,7 +79,7 @@ The ``scipy`` and ``numba`` backends use adaptive step-size control. At each ste
      factor = 0.9 * (tol_step / err) ^ (1/5)
      h_new  = clamp(h * factor, 0.1*h, 10*h)
 
-  where ``tol_step = tol * h / T`` scales the local budget to bound the global error. The step size is computed for all atoms, and the smallest step is applied to all atoms. This allows the computation to be parallelised via Numba ``prange``.
+  where ``tol_step = tol * h / T`` scales the local budget to bound the global error. The local error is taken as the maximum across all atoms and momentum states, so a single step size is chosen that satisfies the worst-case atom. The per-atom RK45 stages themselves are evaluated in parallel via Numba ``prange``.
 
 Pilot + fixed-step Richardson (cpp, gpu, metal)
 ------------------------------------------------
