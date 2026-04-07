@@ -97,6 +97,8 @@ This strategy is well-suited to compiled backends where the inner RK4 loop is ex
 Backends
 ========
 
+In the descriptions below, ``N`` denotes the number of momentum states in the simulation, i.e. ``len(kvec)``, and ``natoms`` denotes the number of atoms in a batch.
+
 scipy
 -----
 
