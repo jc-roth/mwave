@@ -23,6 +23,18 @@ def _wf_rhs(t, phi, kvec, delta, omega, omega_args, phase, phase_args,
 
     Returns :math:`d\\phi/dt` evaluated at time *t* for the wavefunction
     *phi* defined on the momentum grid *kvec*.
+
+    :param t: Current time.
+    :param phi: Wavefunction ``(N,) complex128``.
+    :param kvec: Momentum-state grid ``(N,) float64``.
+    :param delta: Two-photon detuning.
+    :param omega: Callable ``omega(t, omega_args) -> float``.
+    :param omega_args: Extra arguments for ``omega``.
+    :param phase: Callable ``phase(t, phase_args) -> float``.
+    :param phase_args: Extra arguments for ``phase``.
+    :param omega_scale: Multiplicative scale applied to the Rabi frequency.
+    :param transformed: If ``True``, evaluate in the transformed (rotating) frame.
+    :returns: :math:`d\\phi/dt` as ``(N,) complex128``.
     """
     # Compute phi_p1 and phi_m1 (plus and minus 1)
     phi_p1 = np.zeros_like(phi)
@@ -51,6 +63,23 @@ def _rho_rhs(t, rho, nstates, hkvec, vkvec, loss_mat, delta, omega, omega_args,
     Returns :math:`d\\rho/dt` for the density matrix *rho* (passed as a
     flattened vector for compatibility with ``solve_ivp``). See the
     documentation for the explicit form of the equation.
+
+    :param t: Current time.
+    :param rho: Density matrix flattened to ``(N²,) complex128``.
+    :param nstates: Number of momentum states ``N``.
+    :param hkvec: ``(N, N) float64`` — momentum grid tiled horizontally
+        (each row is ``kvec``).
+    :param vkvec: ``(N, N) float64`` — momentum grid tiled vertically
+        (each column is ``kvec``; transpose of ``hkvec``).
+    :param loss_mat: ``(N, N) complex128`` — single-photon scattering loss
+        matrix.
+    :param delta: Two-photon detuning.
+    :param omega: Callable ``omega(t, omega_args) -> float``.
+    :param omega_args: Extra arguments for ``omega``.
+    :param phase: Callable ``phase(t, phase_args) -> float``.
+    :param phase_args: Extra arguments for ``phase``.
+    :param omega_scale: Multiplicative scale applied to the Rabi frequency.
+    :returns: :math:`d\\rho/dt` flattened to ``(N²,) complex128``.
     """
     # Compute Rabi frequency and phase at current time
     oval = omega(t, omega_args) * omega_scale

@@ -109,8 +109,15 @@ def prop_cn(xvec, tfinal, dt, Vvec, psi0):
     return psi1
     
 @jit(nopython=True)
-def _trimatmul(a,b,c,x,y):
-    "a, b, c are the diagonals of the matrix, x is the vector to multiply, y is the new vector. Solves y=Ax for known x."
+def _trimatmul(a, b, c, x, y):
+    """Multiply a tridiagonal matrix by a vector, computing ``y = A*x``.
+
+    :param a: Lower diagonal of the matrix, length ``N-1``.
+    :param b: Main diagonal of the matrix, length ``N``.
+    :param c: Upper diagonal of the matrix, length ``N-1``.
+    :param x: Input vector, length ``N``.
+    :param y: Output vector, length ``N`` (written in-place).
+    """
 
     # First element
     y[0] = x[0]*b[0]+x[1]*c[0]
@@ -123,8 +130,15 @@ def _trimatmul(a,b,c,x,y):
     y[-1] = x[-1]*b[-1] + x[-2]*a[-1]
 
 @jit(nopython=True)
-def _trimatdiv(a,b,c,x,y):
-    "a, b, c are the diagonals of the matrix, solves Ay=x for known x. Uses the Thomas algorithm."
+def _trimatdiv(a, b, c, x, y):
+    """Solve a tridiagonal system ``A*y = x`` for ``y`` using the Thomas algorithm.
+
+    :param a: Lower diagonal of the matrix, length ``N-1``.
+    :param b: Main diagonal of the matrix, length ``N``.
+    :param c: Upper diagonal of the matrix, length ``N-1`` (modified in-place).
+    :param x: Right-hand side vector, length ``N`` (used as working storage).
+    :param y: Solution vector, length ``N`` (written in-place).
+    """
 
     # Forward sweep
     c[0] = c[0]/b[0]
