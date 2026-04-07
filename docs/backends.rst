@@ -217,7 +217,7 @@ All backends solve the same Bloch Hamiltonian, but differ in floating-point prec
      - float64 on CPU, float32 on GPU
      - float64 (upcast)
 
-The ``cpp``, ``gpu``, and ``metal`` backends return float64 arrays (upcast from float32) for a uniform API. The :py:func:`~mwave.integrate.score_backends` function verifies that all backends agree with the ``numba`` reference to within ``1e-3``.
+The ``cpp``, ``gpu``, and ``metal`` backends return float64 arrays (upcast from float32) for a uniform API. The :py:func:`~mwave.integrate.score_backends` function performs two timed runs: a single-atom run (errors reported against the ``scipy`` reference) and a batch run (errors reported against the ``numba`` reference, since ``scipy`` does not support batch mode). All backends are expected to agree with their respective reference to within ``1e-3``.
 
 Choosing a backend
 ==================

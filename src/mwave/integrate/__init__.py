@@ -384,46 +384,34 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
         cache[cache_key] = result
     return result
 
-def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
-    """Benchmark all available :func:`propagate` backends and return a ranked
-    table.
+def _score_run(label, ref_backend, test_backends, *,
+               kvec, phi0, tfinal, delta, omega_args, phase_args,
+               omegas, tol, repeat):
+    """Time each backend in *test_backends* on the given problem and compare
+    its final wavefunction to the *ref_backend* result.
 
-    Runs a fixed Gaussian-pulse Bragg scenario (5hk, ``natoms`` atoms) through
-    each backend, measures wall-clock time (best of ``repeat`` runs), and
-    verifies that the result agrees with the ``'numba'`` backend to within
-    ``1e-3``.  Backends whose dependencies are missing are listed as
-    ``'unavailable'``.
-
-    :param n0: Lower momentum-state order (default ``0``).
-    :param nf: Upper momentum-state order (default ``5``).
-    :param natoms: Number of atoms in the benchmark batch (default ``8``).
-    :param tol: Integration tolerance (default ``1e-6``).
-    :param repeat: Number of timed repetitions per backend; the minimum is used
-        (default ``3``).
-    :returns: List of result dicts sorted by ``time_s`` (``None`` last).
+    Prints a results table and returns the list of result dicts sorted by
+    ``time_s`` (unavailable backends last).
     """
     import time as _time
 
-    kvec, phi0, tfinal, delta, omega_args, phase_args = _score_setup(n0, nf)
-    deltas  = np.linspace(delta * 0.98, delta * 1.02, natoms)
-    omegas  = np.ones(natoms)
-    phi0b   = np.tile(phi0[np.newaxis, :], (natoms, 1))
-
-    # Reference: scipy backend (always available)
+    # Reference: computed once (untimed) so every test backend has a target
+    # to compare against.  Doubles as a warm-up if the reference backend is
+    # also in test_backends.
     ref = propagate(
-        kvec, phi0b, tfinal, deltas,
+        kvec, phi0, tfinal, delta,
         omega_fnc_gaussian, omega_args,
         phase_fnc_constant, phase_args,
-        omegas=omegas, tol=tol, backend='numba',
+        omegas=omegas, tol=tol, backend=ref_backend,
     )
     phi_ref = ref.phi_final
 
     results = []
-    for bk in ('numba', 'cpp', 'gpu', 'metal'):
+    for bk in test_backends:
         # Warm-up: compile/JIT on first call so timing reflects steady-state.
         try:
             propagate(
-                kvec, phi0b, tfinal, deltas,
+                kvec, phi0, tfinal, delta,
                 omega_fnc_gaussian, omega_args,
                 phase_fnc_constant, phase_args,
                 omegas=omegas, tol=tol, backend=bk,
@@ -439,7 +427,7 @@ def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
         for _ in range(repeat):
             t0_ = _time.perf_counter()
             res = propagate(
-                kvec, phi0b, tfinal, deltas,
+                kvec, phi0, tfinal, delta,
                 omega_fnc_gaussian, omega_args,
                 phase_fnc_constant, phase_args,
                 omegas=omegas, tol=tol, backend=bk,
@@ -451,29 +439,12 @@ def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
         results.append({'backend': bk, 'time_s': best_t,
                         'max_err': max_err, 'status': status, 'error': None})
 
-    # scipy (DOP853 reference) — single-atom only, compared against phi_ref[0]
-    phi_ref1 = phi_ref[0]
-    best_t = float('inf')
-    for _ in range(repeat):
-        t0_ = _time.perf_counter()
-        res_scipy = propagate(
-            kvec, phi0, tfinal, deltas[0],
-            omega_fnc_gaussian, omega_args,
-            phase_fnc_constant, phase_args,
-            backend='scipy',
-        )
-        best_t = min(best_t, _time.perf_counter() - t0_)
-    max_err = float(np.max(np.abs(res_scipy.phi_final - phi_ref1)))
-    status  = 'ok' if max_err < 1e-3 else f'MISMATCH (err={max_err:.2e})'
-    results.append({'backend': 'scipy(1)', 'time_s': best_t,
-                    'max_err': max_err, 'status': status, 'error': None})
-
     # Sort: available (by time) before unavailable
     results.sort(key=lambda r: (r['time_s'] is None, r['time_s'] or 0))
 
     # Print table
-    print(f"propagate backend benchmark  (natoms={natoms}, tol={tol}, best of {repeat})")
-    print(f"  scipy uses DOP853, single atom only")
+    print()
+    print(f"{label}  (tol={tol}, best of {repeat}, reference: {ref_backend!r})")
     hdr = f"  {'backend':<10}  {'time (s)':>10}  {'max_err':>10}  status"
     print(hdr)
     print('  ' + '-' * (len(hdr) - 2))
@@ -483,6 +454,60 @@ def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
         print(f"  {r['backend']:<10}  {t_str:>10}  {e_str:>10}  {r['status']}")
 
     return results
+
+
+def score_backends(n0=0, nf=5, natoms=1000, tol=1e-10, repeat=3):
+    """Benchmark :func:`propagate` backends in single-atom and batch modes.
+
+    Two timed runs are performed on a fixed Gaussian-pulse Bragg scenario:
+
+    1. **Single-atom run** — every available backend is timed against a
+       single-atom problem, with errors reported relative to the
+       ``'scipy'`` backend (the gold-standard adaptive integrator).
+    2. **Batch run** — every available batch-capable backend is timed
+       against an ``natoms``-atom problem, with errors reported relative
+       to the ``'numba'`` backend (``'scipy'`` does not support batch).
+
+    For each run, every backend is timed best-of-``repeat`` calls and its
+    final wavefunction is compared to the reference. Backends whose
+    dependencies are missing are listed as ``'unavailable'``.
+
+    :param n0: Lower momentum-state order (default ``0``).
+    :param nf: Upper momentum-state order (default ``5``).
+    :param natoms: Number of atoms in the batch run (default ``1000``).
+    :param tol: Integration tolerance (default ``1e-10``).
+    :param repeat: Number of timed repetitions per backend; the minimum is used
+        (default ``3``).
+    :returns: ``{'single_atom': [...], 'batch': [...]}`` mapping each run
+        name to the corresponding list of result dicts sorted by ``time_s``.
+    """
+    kvec, phi0, tfinal, delta, omega_args, phase_args = _score_setup(n0, nf)
+
+    # Run 1: single atom, reference = scipy
+    single_results = _score_run(
+        label=f"single-atom benchmark (n0={n0}, nf={nf})",
+        ref_backend='scipy',
+        test_backends=('scipy', 'numba', 'cpp', 'gpu', 'metal'),
+        kvec=kvec, phi0=phi0, tfinal=tfinal, delta=delta,
+        omega_args=omega_args, phase_args=phase_args,
+        omegas=None, tol=tol, repeat=repeat,
+    )
+
+    # Run 2: batch, reference = numba (scipy can't do batch)
+    deltas = np.linspace(delta * 0.98, delta * 1.02, natoms)
+    omegas = np.ones(natoms)
+    phi0b  = np.tile(phi0[np.newaxis, :], (natoms, 1))
+
+    batch_results = _score_run(
+        label=f"batch benchmark (natoms={natoms})",
+        ref_backend='numba',
+        test_backends=('numba', 'cpp', 'gpu', 'metal'),
+        kvec=kvec, phi0=phi0b, tfinal=tfinal, delta=deltas,
+        omega_args=omega_args, phase_args=phase_args,
+        omegas=omegas, tol=tol, repeat=repeat,
+    )
+
+    return {'single_atom': single_results, 'batch': batch_results}
 
 
 def _score_setup(n0, nf):
