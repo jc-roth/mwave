@@ -222,32 +222,6 @@ def make_phi(kvec, n0):
     phi0[k0_idx] = 1
     return phi0
 
-def pops_vs_time(kvec, t, phi, ax=None, legend=False):
-    """
-    Plots the population of each momentum state as a function of time.
-
-    :param kvec: The momentum state vector.
-    :param t: The time vector.
-    :param phi: The wavefunction array with shape (len(t), len(kvec)).
-    :param ax: The matplotlib axis to plot on. If None, a new figure is created.
-    :param legend: If True, a legend is added to the plot.
-    """
-    return_ax = False
-
-    if ax is None:
-        fig, ax = plt.subplots()
-        return_ax = True
-
-    ax.plot(t,np.abs(phi)**2, label=[r"n=%0.1f$\hbar k$" % k for k in kvec])
-    ax.set_ylabel('population')
-    ax.set_xlabel(r'time [$1/\omega_\mathrm{r}$]')
-
-    if legend:
-        ax.legend()
-
-    if return_ax:
-        return ax
-
 # ── Unified propagator ──────────────────────────────────────────────────────
 
 def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args,
