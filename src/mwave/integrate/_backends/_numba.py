@@ -33,15 +33,20 @@ import warnings
 # in from Python so that omega_envelope and phase callables are never invoked
 # inside Numba (supporting both JIT and plain-Python callables).
 
-@njit(cache=True, parallel=True)
-def _rk45_dp_step(phi_in, phi_out, phi_err,
+@njit(cache=True, parallel=True, fastmath=True)
+def _rk45_dp_step(phi_in, phi_out, err_sq_per_atom,
                   omegas, deltas, t, h,
                   om, eph, kinp, kinm):
     """Dormand-Prince RK45 step for all atoms in parallel.
 
     :param phi_in:   ``(natoms, N) complex128`` — state at start of step.
     :param phi_out:  ``(natoms, N) complex128`` — 5th-order solution (output).
-    :param phi_err:  ``(natoms, N) complex128`` — error estimate ``phi5-phi4`` (output).
+    :param err_sq_per_atom: ``(natoms,) float64`` — output buffer that
+        receives the per-atom L∞ squared error magnitude:
+        ``max_n |phi5[n] - phi4[n]|²``.  The host then takes a single
+        ``sqrt(np.max(...))`` over this small array to recover the global
+        error norm, avoiding the cost of materialising and reducing a full
+        ``(natoms, N)`` complex error array on the host.
     :param omegas:   ``(natoms,) float64`` — per-atom Rabi scale.
     :param deltas:   ``(natoms,) float64`` — per-atom detuning.
     :param t:        Current time (float64).
@@ -164,10 +169,15 @@ def _rk45_dp_step(phi_in, phi_out, phi_err,
                      - c6p.conjugate() * kinm[5, n] * phi_out[i, n-1])
         k7[Nm1] = -c6p.conjugate() * kinm[5, Nm1] * phi_out[i, Nm1-1]
 
-        # ── Error estimate ────────────────────────────────────────────────────
+        # ── Error estimate: track L∞ squared magnitude across momentum states ─
+        max_sq = 0.0
         for n in range(N):
-            phi_err[i, n] = h * (e1*k1[n] + e3*k3[n] + e4*k4[n]
-                                  + e5*k5[n] + e6*k6[n] + e7*k7[n])
+            err_n = h * (e1*k1[n] + e3*k3[n] + e4*k4[n]
+                          + e5*k5[n] + e6*k6[n] + e7*k7[n])
+            sq = err_n.real * err_n.real + err_n.imag * err_n.imag
+            if sq > max_sq:
+                max_sq = sq
+        err_sq_per_atom[i] = max_sq
 
 
 def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
@@ -207,7 +217,7 @@ def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
 
     phi     = phi0.copy()
     phi_out = np.empty_like(phi)
-    phi_err = np.empty_like(phi)
+    err_sq_per_atom = np.empty(phi.shape[0], dtype=np.float64)
 
     # Initial step: start at T/20, let the controller adapt
     h       = T / 20.0
@@ -237,11 +247,13 @@ def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
         kinm = np.ascontiguousarray(np.exp(1j * np.outer(t_stages, base_m)))
 
         # ── RK45 step for all atoms ───────────────────────────────────────────
-        _rk45_dp_step(phi, phi_out, phi_err, omegas, deltas,
+        _rk45_dp_step(phi, phi_out, err_sq_per_atom, omegas, deltas,
                       t, h, om, eph, kinp, kinm)
 
         # ── Error norm and acceptance ─────────────────────────────────────────
-        err_abs  = float(np.max(np.abs(phi_err)))
+        # Kernel writes per-atom max squared magnitude into err_sq_per_atom;
+        # one sqrt(np.max(...)) recovers the global L∞ error norm.
+        err_abs  = float(np.sqrt(np.max(err_sq_per_atom)))
         tol_step = tol * h / T          # local budget that guarantees global <= tol
 
         if err_abs <= tol_step or h <= H_MIN:
@@ -255,7 +267,7 @@ def _rk45_bloch_adaptive(phi0, omegas, deltas, t0, tfinal,
                     RuntimeWarning, stacklevel=3,
                 )
             t      += h
-            phi[:]  = phi_out
+            phi, phi_out = phi_out, phi   # buffer swap; avoids natoms*N memcpy
             h_last  = h
             err_last = err_abs
 
