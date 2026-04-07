@@ -111,9 +111,19 @@ numba
 :Parallelism: Numba ``prange`` over atoms (multi-core CPU)
 :Compilation: JIT on first call (~10 ms warm-up)
 
-The default backend for batch simulations. Uses an adaptive Dormand-Prince RK45 integrator compiled with ``@njit(parallel=True, fastmath=True)``.
+The default backend for batch simulations. Uses a custom adaptive Dormand-Prince RK45 integrator (DOP5(4) embedded pair) compiled with ``@njit(parallel=True)``.
 
-Each atom is integrated independently with its own per-atom detuning (``delta``) and Rabi scale (``omegas``).
+**Algorithm.** All atoms in a batch are advanced in together: they share a single time grid and a single adaptive step size. At each step:
+
+1. The shared time-dependent driving Rabi envelope :math:`\Omega(t)`, laser phase :math:`e^{i\theta(t)}`, and momentum-grid phase factors :math:`e^{i(\pm 4k\mp 4)t}` — is pre-evaluated **once** at the six unique RK45 stage times.
+
+2. The kernel computes all six RK45 stages, the 5th-order solution, and the embedded error estimate for every atom in parallel via ``prange``. This is possible because the evolution of each atom is independent from every other atom.
+
+3. The step error is the max-norm of ``phi_err`` over all atoms and momentum states. Step size is adapted by a standard 5th-order I-controller (``factor = 0.9 * (tol_step / err)^(1/5)``) with ``tol_step = tol * h / T`` so that the **global** error stays bounded by ``tol``.
+
+The shared driving evaluation and the JIT-compiled inner loop together eliminate essentially all per-step Python overhead.
+
+This approach was discovered through an LLM-in-a-loop optimisation process inspired by Google DeepMind's AlphaEvolve. The discovered approach appears to be the same as the one proposed in Utkarsh et al., `arXiv:2304.06835 <https://arxiv.org/abs/2304.06835>`_ (and implemented in Julia's `DiffEqGPU.jl <https://github.com/SciML/DiffEqGPU.jl>`_ as ``EnsembleGPUKernel``), and so should not be considered novel.
 
 This backend operates in float64 throughout.
 
