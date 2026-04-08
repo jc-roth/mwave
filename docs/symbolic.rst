@@ -1,7 +1,9 @@
 Symbolic reference
 ##################
 
-See the `Interferometer Geometries`_ section for examples of how to use the :py:mod:`mwave.symbolic` module.
+The :py:mod:`mwave.symbolic` module provides tools for constructing atom interferometers symbolically using SymPy. You define unitary operators (beamsplitters, mirrors, free evolution), compose them into an interferometer sequence, and extract analytic phase expressions. Custom ``Unitary`` subclasses can override ``gen_numeric`` to link symbolic geometry definitions to numerical Bragg pulse simulations.
+
+See the `Interferometer Geometries`_ section for examples of how to use this module.
 
 .. _`Interferometer Geometries`: examples/geometries.ipynb
 

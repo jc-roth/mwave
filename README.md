@@ -11,26 +11,26 @@ Located on readthedocs [here](https://mwave.readthedocs.io/latest/quickstart.htm
 ### Building in development mode
 To build the package in development mode execute
 ```bash
-python -m pip install -e .
+uv sync
 ```
 
 ### Building a distributable
 
 ```bash
-poetry build
+uv build
 ```
 
 ### Building documentation
 
-First spawn a shell in the poetry environment by calling `poetry shell` from the root project directory. Next call `poetry install --with dev` to install the package with development dependencies (this includes sphinx). Then from the `docs` directory call
+Install the package with development dependencies, then build the docs:
 
 ```bash
-sphinx-build -b html . _build
+uv sync --extra dev
+uv run sphinx-build -b html docs docs/_build
 ```
 
 ### Testing the package
 To test the package execute
 ```bash
-pytest
+uv run pytest
 ```
-

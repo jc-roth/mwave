@@ -161,8 +161,14 @@ def test_SCI_diffraction_phase_calc():
             n_final = ifr.eval_sympy_var(node.n, subs)
             kvec, n0_idx, nf_idx = intgr.make_kvec(n_init, n_final)
             def fnc(omega, sigma, v, ratio):
-                sol = intgr.gbragg(kvec, intgr.make_phi(kvec, n_init), 2*2.716*sigma, delta + 2*v, -2*np.pi*omega, sigma)
-                return sol.y[nf_idx,-1]
+                tfinal = 2*2.716*sigma
+                res = intgr.propagate(
+                    kvec, intgr.make_phi(kvec, n_init), tfinal, delta + 2*v,
+                    intgr.omega_fnc_gaussian, np.array([-2*np.pi*omega, sigma, tfinal/2]),
+                    intgr.phase_fnc_constant, np.array([0.0]),
+                    backend='scipy',
+                )
+                return res.phi_final[nf_idx]
             return fnc
 
     # Define a numeric unitary operator for multi frequency Bragg
@@ -180,8 +186,14 @@ def test_SCI_diffraction_phase_calc():
             n_final = ifr.eval_sympy_var(node.n, subs)
             kvec, n0_idx, nf_idx = intgr.make_kvec(n_init, n_final)
             def fnc(omega, sigma, v, ratio):
-                sol = intgr.gbragg(kvec, intgr.make_phi(kvec, n_init), 2*2.716*sigma, delta + 2*v, -2*np.pi*omega*ratio/4, sigma, omega_mod=omega_m)
-                return sol.y[nf_idx,-1]
+                tfinal = 2*2.716*sigma
+                res = intgr.propagate(
+                    kvec, intgr.make_phi(kvec, n_init), tfinal, delta + 2*v,
+                    intgr.multi_omega_fnc, np.array([-2*np.pi*omega*ratio/4, sigma, tfinal/2, omega_m]),
+                    intgr.phase_fnc_constant, np.array([0.0]),
+                    backend='scipy',
+                )
+                return res.phi_final[nf_idx]
             return fnc
 
     # Define the operators needed for an SCI
