@@ -17,6 +17,7 @@ Numeric simulations
    :maxdepth: 2
 
    examples/numeric_interferometer_usage
+   examples/numeric_interferometer_precompute_comparison
    examples/splitstep_numeric_interferometer_comparison
 
 Advanced / Systematics

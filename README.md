@@ -30,7 +30,8 @@ uv run sphinx-build -b html docs docs/_build
 ```
 
 ### Testing the package
-To test the package execute
+Install the package with development dependencies, then run the tests:
 ```bash
+uv sync --extra dev
 uv run pytest
 ```

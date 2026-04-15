@@ -27,7 +27,8 @@ A package for simulating atom interferometers, combining symbolic phase calculat
 
    symbolic
    numeric
-   integration_utils
+   integration
+   utilities
 
 Indices and tables
 ==================

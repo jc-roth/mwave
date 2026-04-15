@@ -1,3 +1,4 @@
+import inspect
 import numpy as np
 
 class NumericBraggInterferometer:
@@ -65,10 +66,11 @@ class NumericBraggInterferometer:
             next_level += node.children
         self.current_level = next_level
 
-    def get_nodes(self):
+    def get_nodes(self, x_tolerance=None):
         """
         Returns a dictionary of nodes at the current level, organized by momentum and position.
 
+        :param x_tolerance: Optional. If provided, nodes whose position differs from an existing bucket key by less than :code:`x_tolerance` are grouped into that bucket rather than creating a new one. When multiple existing keys are within tolerance, the closest one is chosen. Note that bucket keys anchor to the position of the first node assigned to them, so the resulting grouping can depend on the order in which nodes are processed.
         :returns: A dictionary where keys are momentum states, values are dictionaries of positions, and values of those dictionaries are lists of nodes at that momentum and position.
         """
         # Make a dictionary of momentum states. Values are dictionaries of positions. Values of those dictionaries are lists of nodes at that momentum and position.
@@ -76,58 +78,116 @@ class NumericBraggInterferometer:
         for node in self.current_level:
             if node.k not in nodedict:
                 nodedict[node.k] = {}
+
             if node.x not in nodedict[node.k]:
-                nodedict[node.k][node.x] = [node]
+                # Check if another node is within tolerance
+                if x_tolerance:
+                    xs = np.array(list(nodedict[node.k].keys()))
+                    diffs = np.abs(node.x - xs)
+                    mask = diffs < x_tolerance
+                    if np.sum(mask) > 0:
+                        target_x = xs[mask][np.argmin(diffs[mask])]
+                        nodedict[node.k][target_x].append(node)
+                    # Create a new array with the node in it
+                    else:
+                        nodedict[node.k][node.x] = [node]
+                # Create a new array with the node in it
+                else:
+                    nodedict[node.k][node.x] = [node]
             else:
                 nodedict[node.k][node.x].append(node)
         return nodedict
     
-    def set_operation_funcs(self, funcs):
+    def compile(self, split_funcs, propagate_func, output_momentums, kvector_funcs=None,
+                func_pop_init=None, func_wf_init=None, func_wf2_init=None, x_tolerance=None):
         """
-        Sets the functions used to numerically evaluate the operations (split, propagate) performed on the interferometer.
+        Compiles the interferometer into a single population-calculation function.
 
-        :param funcs: A list of functions corresponding to the operations performed on the interferometer, in order.
+        Split and propagate functions are provided separately and interleaved automatically
+        to match the operation sequence.
+
+        :param split_funcs: A list of functions, one per split operation. Each takes :code:`(*comm_args, k_init, k_final, klattice, t, x)`.
+        :param propagate_func: A single function used for all propagation steps. Takes :code:`(*comm_args, t, k)`.
+        :param output_momentums: A list of output momentum values to compute populations for.
+        :param kvector_funcs: Optional. A list of functions, one per split operation. Each takes :code:`(*comm_args)` and returns a scalar wavevector shift :code:`dk`.
+        :param func_pop_init: Optional. A function that initializes the population accumulator. Takes :code:`(*comm_args)`. Defaults to :code:`np.zeros_like(comm_args[0])`.
+        :param func_wf_init: Optional. A function that initializes the wavefunction amplitude. Takes :code:`(*comm_args)`. Defaults to :code:`np.ones_like(comm_args[0])`.
+        :param func_wf2_init: Optional. A function that initializes the wavefunction accumulator. Takes :code:`(*comm_args)`. Defaults to :code:`np.zeros_like(comm_args[0])`.
+        :param x_tolerance: Optional. If provided, nodes whose position differs from an existing bucket key by less than :code:`x_tolerance` are grouped into that bucket rather than creating a new one. When multiple existing keys are within tolerance, the closest one is chosen. Note that bucket keys anchor to the position of the first node assigned to them, so the resulting grouping can depend on the order in which nodes are processed.
+        :returns: A function :code:`calc_pops(momentum, comm_args)` that computes the population at the given momentum.
+        :raises ValueError: If the number of split_funcs or kvector_funcs does not match the number of split operations, or if function signatures are inconsistent.
         """
-        # Store the supplied function list in the NumericBraggInterferometer object
-        self.operation_funcs = funcs
+        # Count split operations
+        n_splits = sum(1 for op_type, _ in self.operations if op_type == 'split')
 
-    def get_population_func(self, momentums, func_pop_init, func_wf_init, func_wf2_init):
-        """
-        Returns a function that computes the population for a given set of output momentums.
+        # Validate lengths
+        if len(split_funcs) != n_splits:
+            raise ValueError(f'Expected {n_splits} split functions, got {len(split_funcs)}')
+        if kvector_funcs is not None and len(kvector_funcs) != n_splits:
+            raise ValueError(f'Expected {n_splits} kvector functions, got {len(kvector_funcs)}')
 
-        :param momentums: A list of output momentums to compute the population for.
-        :param func_pop_init: A function that computes the initial population.
-        :param func_wf_init: A function that computes the initial wavefunction.
-        :param func_wf2_init: A function that computes the initial wavefunction (secondary, used in calculation).
-        :returns: A function that takes :code:`comm_args` and returns the total population at the specified momentums.
-        """
-        # Get dictionary of momentums
-        nodedict = self.get_nodes()
+        # Validate function signatures
+        split_counts = [self._param_count(f) for f in split_funcs]
+        prop_count = self._param_count(propagate_func)
 
-        # Create dictionary to store function call lists
+        known_split_counts = [c for c in split_counts if c is not None]
+        if known_split_counts and len(set(known_split_counts)) > 1:
+            raise ValueError(f'split_funcs have inconsistent parameter counts: {split_counts}')
+
+        if known_split_counts and prop_count is not None:
+            expected_prop = known_split_counts[0] - 3
+            if prop_count != expected_prop:
+                raise ValueError(
+                    f'propagate_func takes {prop_count} parameters, expected '
+                    f'{expected_prop} (split functions take {known_split_counts[0]}, '
+                    f'propagate should take 3 fewer)')
+
+        if kvector_funcs is not None:
+            for i, kvf in enumerate(kvector_funcs):
+                kv_count = self._param_count(kvf)
+                if kv_count is not None and known_split_counts:
+                    expected_kv = known_split_counts[0] - 5
+                    if kv_count != expected_kv:
+                        raise ValueError(
+                            f'kvector_funcs[{i}] takes {kv_count} parameters, expected '
+                            f'{expected_kv} (split functions take {known_split_counts[0]}, '
+                            f'kvector should take 5 fewer)')
+
+        # Build interleaved operation_funcs list, bundling kvector_funcs with split_funcs
+        operation_funcs = []
+        split_idx = 0
+        for op_type, _ in self.operations:
+            if op_type == 'split':
+                kvf = kvector_funcs[split_idx] if kvector_funcs is not None else None
+                operation_funcs.append((split_funcs[split_idx], kvf))
+                split_idx += 1
+            elif op_type == 'propagate':
+                operation_funcs.append((propagate_func, None))
+
+        self.operation_funcs = operation_funcs
+
+        # Default init functions
+        if func_pop_init is None:
+            func_pop_init = lambda *comm_args: np.zeros_like(comm_args[0])
+        if func_wf_init is None:
+            func_wf_init = lambda *comm_args: np.ones_like(comm_args[0], dtype=np.complex128)
+        if func_wf2_init is None:
+            func_wf2_init = lambda *comm_args: np.zeros_like(comm_args[0], dtype=np.complex128)
+
+        # Build wavefunction closures for each output momentum
+        nodedict = self.get_nodes(x_tolerance=x_tolerance)
         func_dict = {}
-
-        # Loop through and construct a function call for each output momentum
-        for momentum in momentums:
-
-            # If momentum is actually output continue
+        for momentum in output_momentums:
             if momentum in nodedict:
-                
-                # For each momentum loop over all output positions
                 popfuncs = []
                 for position in nodedict[momentum]:
-
-                    # Within each position get the wavefunction evaluation function
                     wffuncs = []
                     for node in nodedict[momentum][position]:
                         wffuncs.append(node.get_wf_func(func_wf_init))
-
-                    # Append all of these functions to the population function list
                     popfuncs.append(wffuncs)
-                    
                 func_dict[momentum] = popfuncs
 
-        # Create functions
+        # Return compiled population function
         def calc_pops(momentum, comm_args):
             pop = func_pop_init(*comm_args)
             for flst in func_dict[momentum]:
@@ -137,8 +197,21 @@ class NumericBraggInterferometer:
                 pop += np.abs(wf)**2
             return pop
 
-        # Return
         return calc_pops
+
+    @staticmethod
+    def _param_count(func):
+        """Returns the number of positional parameters, or None if the function uses *args."""
+        try:
+            sig = inspect.signature(func)
+        except (ValueError, TypeError):
+            return None
+        for p in sig.parameters.values():
+            if p.kind == inspect.Parameter.VAR_POSITIONAL:
+                return None
+        return sum(1 for p in sig.parameters.values()
+                   if p.kind in (inspect.Parameter.POSITIONAL_ONLY,
+                                 inspect.Parameter.POSITIONAL_OR_KEYWORD))
 
 class NumericTreeNode:
     """
@@ -261,10 +334,10 @@ class NumericTreeNode:
         func_calls = []
         for i in range(len(ops)):
             op_type, op_args = ops[i]
-            op_func = self.ifr.operation_funcs[i]
+            op_func, kvfunc = self.ifr.operation_funcs[i]
             initial_node = nodes[i]
             final_node = nodes[i+1]
-            
+
             if op_type == 'propagate':
 
                 # Consistency checking
@@ -273,19 +346,17 @@ class NumericTreeNode:
 
                 # Extract needed parameters, construct function call
                 k = initial_node.k
-                x_init = initial_node.x
                 t_init = initial_node.t
-                x_final = final_node.x
                 t_final = final_node.t
                 t = op_args[0]
-                
+
                 # Further consistency checking
                 if not np.allclose(t_final - t_init, t):
                     raise RuntimeError('propagation time is inconsistent between nodes and operation')
 
                 # Construct function call and store
-                func_calls.append((op_func, [t, k]))
-                
+                func_calls.append(('propagate', op_func, [t, k], 0, None))
+
             elif op_type == 'split':
 
                 # Consistency checking
@@ -300,17 +371,27 @@ class NumericTreeNode:
                 k_init = initial_node.k
                 k_final = final_node.k
                 klattice = op_args[0]
-                
+                delta_k = k_final - k_init
+
                 # Construct function call and store
-                func_calls.append((op_func, [k_init, k_final, klattice, t, x]))
+                func_calls.append(('split', op_func, [k_init, k_final, klattice, t, x], delta_k, kvfunc))
 
         # Construct function that computes the wavefunction from each function call
         def calc_wf(comm_args):
             wf = func_init(*comm_args)
+            k_extra = 0.0
             for func_call in func_calls:
-                func, args = func_call
-                args2 = comm_args + args
-                wf *= func(*args2)
+                op_type, func, args, delta_k, kvector_func = func_call
+                if op_type == 'split':
+                    if kvector_func is not None:
+                        dk = kvector_func(*comm_args)
+                        k_extra += delta_k * dk
+                    args2 = comm_args + args
+                    wf *= func(*args2)
+                elif op_type == 'propagate':
+                    t, k = args
+                    args2 = comm_args + [t, k + k_extra]
+                    wf *= func(*args2)
             return wf
 
         # Return

@@ -253,8 +253,8 @@ def test_batch_norm_conservation():
 # ── Test 9: NumericBraggInterferometer end-to-end ───────────────────────────
 
 def test_propagate_with_interferometer():
-    """propagate must agree with scipy backend across all output ports of a full
-    simultaneous conjugate interferometer."""
+    """numba and scipy backends must agree across all output ports of a full
+    simultaneous conjugate interferometer using compile()."""
     nbragg = 2
     T      = 2.0
     Tp     = 1.0
@@ -266,93 +266,62 @@ def test_propagate_with_interferometer():
 
     omega_args = np.array([omega_peak, sigma, t_bragg / 2.0])
     phase_args = np.array([0.0])
+    output_ports = [4 * nbragg, 2 * nbragg, 0, -2 * nbragg]
 
-    ifr = NumericBraggInterferometer(-2 * nbragg, 4 * nbragg, distance=0)
-    ifr.split(nbragg)
-    ifr.propagate(T)
-    ifr.split(nbragg)
-    ifr.propagate(Tp)
-    ifr.split([3 * nbragg, -nbragg])
-    ifr.propagate(T)
-    ifr.split([3 * nbragg, -nbragg])
+    def make_ifr():
+        ifr = NumericBraggInterferometer(-2 * nbragg, 4 * nbragg, distance=0)
+        ifr.split(nbragg)
+        ifr.propagate(T)
+        ifr.split(nbragg)
+        ifr.propagate(Tp)
+        ifr.split([3 * nbragg, -nbragg])
+        ifr.propagate(T)
+        ifr.split([3 * nbragg, -nbragg])
+        return ifr
 
-    kvec = ifr.kvec
+    kvec = make_ifr().kvec
 
-    def omega_py(t, args):
-        return float(omega_fnc_gaussian(t, args))
-
-    def phase_py(t, args):
-        return float(phase_fnc_constant(t, args))
-
-    _rk_cache = {}
-
-    def cached_split_fn(*args):
-        comm_args = args[:-5]
-        k_init, k_final, _, t_start, _ = args[-5:]
-        delta_val = float(comm_args[0])
-        phi0 = np.zeros(len(kvec), dtype=np.complex128)
-        phi0[int(np.argmin(np.abs(kvec - k_init)))] = 1.0
-        res = propagate(
-            kvec, phi0, t_start + t_bragg, delta_val,
-            omega_py, omega_args,
-            phase_py, phase_args,
-            omegas=1.0, t0=t_start, backend='numba',
-            cache=_rk_cache,
-        )
-        return res.phi_final[int(np.argmin(np.abs(kvec - k_final)))]
-
-    def prop_fn(_, t, k):
-        return np.exp(-1j * t * k ** 2)
-
-    ifr.set_operation_funcs(
-        [cached_split_fn, prop_fn, cached_split_fn, prop_fn,
-         cached_split_fn, prop_fn, cached_split_fn]
-    )
-
-    def func_pop_init(delta_val):
-        return np.float64(0.0)
-
-    def func_wf_init(delta_val):
-        return np.complex128(1.0)
-
-    def func_wf2_init(delta_val):
-        return np.complex128(0.0)
-
-    # Reference using scipy backend
-    ifr_ref = NumericBraggInterferometer(-2 * nbragg, 4 * nbragg, distance=0)
-    ifr_ref.split(nbragg)
-    ifr_ref.propagate(T)
-    ifr_ref.split(nbragg)
-    ifr_ref.propagate(Tp)
-    ifr_ref.split([3 * nbragg, -nbragg])
-    ifr_ref.propagate(T)
-    ifr_ref.split([3 * nbragg, -nbragg])
-
-    _scipy_cache = {}
-
-    def ref_split_fn(delta_val, k_init, k_final, _klattice, t_start, _x):
-        cache_key = (delta_val, k_init, t_start)
-        if cache_key not in _scipy_cache:
+    def make_split_fn(cache, backend, omega_fn, phase_fn):
+        def split_fn(*args):
+            comm_args = args[:-5]
+            k_init, k_final, _, t_start, _ = args[-5:]
+            delta_val = float(comm_args[0])
             phi0 = np.zeros(len(kvec), dtype=np.complex128)
             phi0[int(np.argmin(np.abs(kvec - k_init)))] = 1.0
             res = propagate(
                 kvec, phi0, t_start + t_bragg, delta_val,
-                omega_fnc_gaussian, omega_args,
-                phase_fnc_constant, phase_args,
-                t0=t_start, backend='scipy',
+                omega_fn, omega_args,
+                phase_fn, phase_args,
+                omegas=1.0, t0=t_start, backend=backend,
+                cache=cache,
             )
-            _scipy_cache[cache_key] = res.phi_final
-        return _scipy_cache[cache_key][int(np.argmin(np.abs(kvec - k_final)))]
+            return res.phi_final[int(np.argmin(np.abs(kvec - k_final)))]
+        return split_fn
 
-    ifr_ref.set_operation_funcs(
-        [ref_split_fn, prop_fn, ref_split_fn, prop_fn,
-         ref_split_fn, prop_fn, ref_split_fn]
+    def prop_fn(_, t, k):
+        return np.exp(-1j * t * k ** 2)
+
+    # Numba backend
+    ifr = make_ifr()
+    pop_func = ifr.compile(
+        split_funcs=[make_split_fn(
+            {}, 'numba',
+            lambda t, a: float(omega_fnc_gaussian(t, a)),
+            lambda t, a: float(phase_fnc_constant(t, a)),
+        )] * 4,
+        propagate_func=prop_fn,
+        output_momentums=output_ports,
     )
 
-    output_ports = [4 * nbragg, 2 * nbragg, 0, -2 * nbragg]
-
-    pop_func     = ifr.get_population_func(output_ports, func_pop_init, func_wf_init, func_wf2_init)
-    pop_func_ref = ifr_ref.get_population_func(output_ports, func_pop_init, func_wf_init, func_wf2_init)
+    # Scipy backend (reference)
+    ifr_ref = make_ifr()
+    pop_func_ref = ifr_ref.compile(
+        split_funcs=[make_split_fn(
+            {}, 'scipy', omega_fnc_gaussian, phase_fnc_constant,
+        )] * 4,
+        propagate_func=prop_fn,
+        output_momentums=output_ports,
+    )
 
     for port in output_ports:
         pop_rk  = float(pop_func(port, [delta]))
@@ -361,6 +330,32 @@ def test_propagate_with_interferometer():
             f"Port {port}: rk={pop_rk:.6f}, ref={pop_ref:.6f}, "
             f"diff={abs(pop_rk - pop_ref):.2e}"
         )
+
+
+# ── Test: compile validation ────────────────────────────────────────────────
+
+def test_compile_validation():
+    """compile() must raise ValueError for wrong-length function lists."""
+    import pytest
+
+    ifr = NumericBraggInterferometer(-4, 4, distance=0)
+    ifr.split(2)
+    ifr.propagate(1.0)
+    ifr.split(2)
+
+    dummy_split = lambda *args: 1.0
+    dummy_prop  = lambda *args: 1.0
+
+    # Wrong number of split_funcs
+    with pytest.raises(ValueError, match="Expected 2 split functions, got 3"):
+        ifr.compile([dummy_split] * 3, dummy_prop, [0])
+
+    with pytest.raises(ValueError, match="Expected 2 split functions, got 1"):
+        ifr.compile([dummy_split] * 1, dummy_prop, [0])
+
+    # Wrong number of kvector_funcs
+    with pytest.raises(ValueError, match="Expected 2 kvector functions, got 1"):
+        ifr.compile([dummy_split] * 2, dummy_prop, [0], kvector_funcs=[dummy_split])
 
 
 # ── Test 13: validation errors ──────────────────────────────────────────────

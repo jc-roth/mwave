@@ -38,7 +38,7 @@ def write_bragg_precompute(fname, phi, kvec, grid, n0, nf, n_bragg, N_bloch=None
         g_data.create_dataset('phi', data=phi, compression='gzip')
         g_data.create_dataset('kvec', data=kvec, compression='gzip')
         
-        g_grid = g_data.require_group(f'grid')
+        g_grid = g_data.require_group('grid')
         g_grid.attrs.create('grid_def', ','.join([g[1] for g in grid]))
         for g in grid:
             g_grid.create_dataset(g[1], data=g[0], compression='gzip')
@@ -290,7 +290,7 @@ def load_precomputed_gbragg(single_path, multi_path=None, method='cubic', table_
         if not disable_multifrequency and check_mod_freq and mod_freq and mod_freq != table_modulation_frequency:
             raise ValueError(f'Provided mod_freq is {mod_freq}, inconsistent with precompute mod_freq of {table_modulation_frequency}.')
         if disable_multifrequency and mod_freq:
-            raise ValueError(f'No multifrequency precompute table was provided, mod_freq must be None.')
+            raise ValueError('No multifrequency precompute table was provided, mod_freq must be None.')
         
         # Select precompute table based on input params and disable_multifrequency state
         kvec_precomp = kvec_precomp_single

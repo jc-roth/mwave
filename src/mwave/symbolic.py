@@ -694,13 +694,13 @@ class Interferometer():
             gen = cnode.get_generator()
         
             # If beamsplitter, increment nbs
-            if type(gen) == Beamsplitter:
+            if type(gen) is Beamsplitter:
                 n = cnode.parent.n
                 if gen.n1 == n or gen.n2 == n:
                     nbs += 1
-        
+
             # If free evolution append time
-            elif type(gen) == FreeEv:
+            elif type(gen) is FreeEv:
                 DeltaTs.append(sympy.simplify(cnode.t - cnode.parent.t))
         
             # Update cnode to parent
@@ -972,4 +972,4 @@ class Mirror(Unitary):
             s2.set_phase_diff((self._n1 - self._n2)*(self._k*node.z - self.delta*node.t))
         else:
             # Not resonant, create child node which is identical to parent node
-            s1 = InterferometerNode(parent_node=node, unitary=self)
+            InterferometerNode(parent_node=node, unitary=self)
