@@ -199,6 +199,50 @@ class NumericBraggInterferometer:
 
         return calc_pops
 
+    def compile_numeric_sweep(self, *, envelope, tfinal, beam_profile,
+                              multi_envelope=None, output_momentums=None,
+                              tol=1e-6, internal_tol=1e-5):
+        """Compiles a fast, batched phase-sweep evaluator for this interferometer.
+
+        Unlike :meth:`compile`, which composes user-provided split/propagate
+        functions, this method numerically propagates every unique Bragg pulse
+        configuration using an adaptive DP5 integrator and then evaluates the
+        resulting population vs. sweep-phase curve via a Fourier decomposition.
+
+        :param envelope: Callable ``envelope(t) -> array`` giving the pulse
+            temporal shape for single-frequency splits. Must vectorize over
+            numpy array input. For a standard Gaussian,
+            :func:`mwave.numeric.gaussian_envelope` returns a matching
+            ``(envelope, tfinal)`` pair.
+        :param tfinal: Total pulse duration in recoil time units. The integrator
+            runs from ``t=0`` to ``t=tfinal``.
+        :param beam_profile: Callable ``beam_profile(x, y, z) -> array`` giving
+            the effective peak Rabi frequency at each atom's position. Inputs
+            are per-atom position arrays (all the same shape); output must
+            broadcast to that shape. For a standard transverse Gaussian beam,
+            :func:`mwave.numeric.gaussian_beam` returns a ready-to-use callable.
+        :param multi_envelope: Optional callable ``env(t) -> array`` used for
+            multi-frequency splits. Required if the geometry contains any split
+            whose lattice wavevector is a list/tuple/array. For the common
+            two-tone Bragg pulse, wrap a single-freq envelope with
+            :func:`mwave.numeric.multi_freq_envelope`.
+        :param output_momentums: Iterable of output momenta to compute populations
+            for. Defaults to ``(4*nbragg, 2*nbragg, 0, -2*nbragg)``.
+        :param tol: External tolerance (reserved; not currently consulted by the
+            fixed-schedule hot path).
+        :param internal_tol: Tolerance used when computing the adaptive step
+            schedule on the worst-case pilot trajectory.
+        :returns: A callable ``sweep(cloud, cphases, injected_dphase=0.0)`` that
+            returns a tuple of 1D population arrays, one per output momentum.
+            ``cloud`` is a dict with keys ``x0, y0, z0, vx, vy, vz``.
+        """
+        from ._fastsweep import _NumericSweep
+        return _NumericSweep(self, envelope=envelope, tfinal=tfinal,
+                             beam_profile=beam_profile,
+                             multi_envelope=multi_envelope,
+                             output_momentums=output_momentums,
+                             tol=tol, internal_tol=internal_tol)
+
     @staticmethod
     def _param_count(func):
         """Returns the number of positional parameters, or None if the function uses *args."""
