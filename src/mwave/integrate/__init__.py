@@ -176,7 +176,7 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
 
     **Backends**
 
-    - ``'scipy'`` — adaptive ``solve_ivp`` (default for single-atom). Supports ``dense`` output, the ``transformed`` frame, and spontaneous emission via ``Gamma_sps``. Unavailable for batch mode.
+    - ``'scipy'`` — adaptive ``solve_ivp`` (default for single-atom). Supports ``dense`` output and spontaneous emission via ``Gamma_sps``. Unavailable for batch mode.
     - ``'numba'`` — Numba RK45 with ``prange`` (default for batch).
 
     :param kvec: The vector of momentum states to simulate ``(N,) float64``.
@@ -195,14 +195,15 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
     :param atol: Absolute tolerance for ``backend='scipy'`` (default ``1e-10``). Ignored for other backends.
     :param rtol: Relative tolerance for ``backend='scipy'`` (default ``1e-10``). Ignored for other backends.
     :param max_step: Maximum step size for ``backend='scipy'`` (default ``0.1``). Ignored for other backends.
-    :param transformed: Use the transformed frame for ``backend='scipy'`` (default ``False``). Ignored for other backends.
+    :param transformed: Output frame selector. ``False`` (default) returns the interaction-picture wavefunction; ``True`` returns the lab-frame wavefunction. The ``scipy`` backend integrates the lab-frame Hamiltonian when ``transformed=True`` and the interaction-picture Hamiltonian when ``False``. The ``numba`` backend integrates the interaction-picture Hamiltonian and applies a phase transformation if the lab frame is requested.
     :param Gamma_sps: Single-photon scattering rate for density-matrix evolution for ``backend='scipy'`` (default ``None``). Ignored for other backends.
     :param tol: Error tolerance for the ``numba`` RK45 backend (default ``1e-10``).
-    :param cache: Optional ``dict`` for memoising results from the ``numba`` backend. The cache key incorporates every input that affects the output (``phi0``, ``delta``, ``omegas``, ``kvec``, ``omega_args``, ``phase_args``, ``t0``, ``tfinal``, ``backend``, ``tol``) along with the ``omega`` and ``phase`` callables themselves. The callables are hashed by object identity, so to get cache hits across calls you must reuse the *same* function object. Wrapping the same underlying function in a fresh ``lambda`` on each call will produce a distinct object and miss the cache. Define the wrapper once and reuse it.
+    :param cache: Optional ``dict`` for memoising results from the ``numba`` backend. The cache key incorporates every input that affects the output (``phi0``, ``delta``, ``omegas``, ``kvec``, ``omega_args``, ``phase_args``, ``t0``, ``tfinal``, ``backend``, ``tol``, ``transformed``) along with the ``omega`` and ``phase`` callables themselves. The callables are hashed by object identity, so to get cache hits across calls you must reuse the *same* function object. Wrapping the same underlying function in a fresh ``lambda`` on each call will produce a distinct object and miss the cache. Define the wrapper once and reuse it.
     :returns: A :class:`PropagateResult`."""
 
     # Validate shape of inputs
     scalar_input = np.ndim(phi0) == 1
+    kvec = np.asarray(kvec, dtype=np.float64)
 
     if scalar_input:
         phi0 = np.asarray(phi0, dtype=np.complex128)
@@ -251,8 +252,18 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
         raise ValueError("dense=True is not supported for batch mode.")
     if dense and backend != 'scipy':
         raise ValueError(f"dense=True requires backend='scipy', got backend='{backend}'.")
-    if backend != 'scipy' and (transformed or Gamma_sps is not None):
-        raise ValueError("transformed and Gamma_sps are only supported with backend='scipy'.")
+    if backend != 'scipy' and Gamma_sps is not None:
+        raise ValueError("Gamma_sps is only supported with backend='scipy'.")
+
+    # Apply transformation to wavefunction if using numba backend and transformed is True
+    transform_wavefunction = (backend == 'numba') and transformed
+    if transform_wavefunction:
+        kphase_in = np.exp(1j * kvec**2 * t0)
+        kphase_out = np.exp(-1j * kvec**2 * tfinal)
+        if scalar_input:
+            phi0 = phi0 * kphase_in
+        else:
+            phi0 = phi0 * kphase_in[np.newaxis, :]
 
     # Call scipy
     if backend == 'scipy':
@@ -282,10 +293,11 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
     if cache is not None:
         cache_key = (
             phi0_2d.tobytes(), delta_arr.tobytes(), omegas_arr.tobytes(),
-            np.asarray(kvec).tobytes(),
+            kvec.tobytes(),
             omega, np.asarray(omega_args).tobytes(),
             phase, np.asarray(phase_args).tobytes(),
             float(t0), float(tfinal), backend, float(tol),
+            bool(transformed),
         )
         if cache_key in cache:
             return cache[cache_key]
@@ -294,6 +306,10 @@ def propagate(kvec, phi0, tfinal, delta, omega, omega_args, phase, phase_args, o
     phi_all, dt_used, error_est = _rk45_bloch_adaptive(
         phi0_2d, omegas_arr, delta_arr, t0, tfinal,
         omega, omega_args, phase, phase_args, kvec, tol)
+
+    # Apply wavefunction transformation to lab frame if required
+    if transform_wavefunction:
+        phi_all = phi_all * kphase_out[np.newaxis, :]
     phi_out = phi_all[0] if scalar_input else phi_all
     result = PropagateResult(
         phi_final=phi_out, kvec=kvec,

@@ -358,6 +358,94 @@ def test_compile_validation():
         ifr.compile([dummy_split] * 2, dummy_prop, [0], kvector_funcs=[dummy_split])
 
 
+def test_filtered_split_prunes_current_level():
+    ifr = NumericBraggInterferometer(-4, 4, distance=2, kpad=0)
+    ifr.split(0, filter_func=lambda _, k0, kf: abs(kf - k0) <= 2)
+    assert {node.k for node in ifr.current_level} == {-2, 0, 2}
+
+
+def test_transition_updates_current_level_without_phase_factor():
+    ifr = NumericBraggInterferometer(0, 4, distance=0, kpad=0)
+    ifr.transition({0: 4})
+    assert [node.k for node in ifr.current_level] == [4]
+
+    pop_func = ifr.compile([], lambda _, t, k: 0.0, [4])
+    assert np.array_equal(pop_func(4, [np.array([0.0, 1.0])]), np.ones(2))
+
+
+def test_kvector_func_receives_split_context_and_offsets_propagation():
+    ifr = NumericBraggInterferometer(0, 2, distance=0, kpad=0)
+    ifr.split(1)
+    ifr.propagate(1.0)
+    seen = {}
+
+    def split_fn(scale, k_init, k_final, klattice, t, x):
+        return scale + k_init + k_final + klattice + t + x
+
+    def kvector_fn(scale, k_init, k_final, klattice, t, x):
+        seen["args"] = (scale, k_init, k_final, klattice, t, x)
+        return 0.5
+
+    def prop_fn(scale, t, k):
+        seen["prop_k"] = k
+        return 1.0
+
+    pop_func = ifr.compile([split_fn], prop_fn, [2], kvector_funcs=[kvector_fn])
+    assert pop_func(2, [1.0]) == 16.0
+    assert seen["args"] == (1.0, 0, 2, 1, 0, 0)
+    assert seen["prop_k"] == 3.0
+
+
+def test_kvector_func_signature_matches_split_signature():
+    ifr = NumericBraggInterferometer(0, 2, distance=0, kpad=0)
+    ifr.split(1)
+    split_fn = lambda scale, k_init, k_final, klattice, t, x: 1.0
+    prop_fn = lambda scale, t, k: 1.0
+    bad_kvector_fn = lambda scale: 0.0
+    with pytest.raises(ValueError, match="same as split functions"):
+        ifr.compile([split_fn], prop_fn, [2], kvector_funcs=[bad_kvector_fn])
+
+
+def test_numba_transformed_matches_scipy_transformed_and_uses_cache_key():
+    kvec, phi0, tfinal, delta, omega_args, phase_args = _gaussian_setup()
+    cache = {}
+
+    res_numba = propagate(
+        kvec, phi0, tfinal, delta,
+        omega_fnc_gaussian, omega_args,
+        phase_fnc_constant, phase_args,
+        backend='numba', transformed=True, cache=cache,
+    )
+    res_scipy = propagate(
+        kvec, phi0, tfinal, delta,
+        omega_fnc_gaussian, omega_args,
+        phase_fnc_constant, phase_args,
+        backend='scipy', transformed=True,
+    )
+    max_diff = float(np.max(np.abs(res_numba.phi_final - res_scipy.phi_final)))
+    assert max_diff < 1e-8, f"transformed numba/scipy disagreement = {max_diff:.2e}"
+
+    res_interaction = propagate(
+        kvec, phi0, tfinal, delta,
+        omega_fnc_gaussian, omega_args,
+        phase_fnc_constant, phase_args,
+        backend='numba', transformed=False, cache=cache,
+    )
+    assert len(cache) == 2
+    assert np.max(np.abs(res_numba.phi_final - res_interaction.phi_final)) > 1e-6
+
+
+def test_gamma_sps_still_requires_scipy_backend():
+    kvec, phi0, tfinal, delta, omega_args, phase_args = _gaussian_setup()
+    with pytest.raises(ValueError, match="Gamma_sps"):
+        propagate(
+            kvec, phi0, tfinal, delta,
+            omega_fnc_gaussian, omega_args,
+            phase_fnc_constant, phase_args,
+            backend='numba', Gamma_sps=0.1,
+        )
+
+
 # ── Test 13: validation errors ──────────────────────────────────────────────
 
 def test_batch_scipy_raises():

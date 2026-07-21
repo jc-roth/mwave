@@ -34,11 +34,12 @@ class NumericBraggInterferometer:
         self.current_level = [self.root]
         self.operations = []
 
-    def split(self, klattice):
+    def split(self, klattice, filter_func=None):
         """
         Applies a Bragg diffraction splitting operation to all nodes at the current level.
 
         :param klattice: The lattice wavevector(s) for the Bragg pulse. Can be a single value or a list of values.
+        :param filter_func: Optional. A predicate ``filter_func(kvec, k0, kf) -> bool`` deciding whether a child node at momentum ``kf`` should be created from a parent at momentum ``k0``. Defaults to allowing all children. This is useful for pruning off-resonant high-order reflections when building geometries out of many low-order Bragg pulses.
         """
         # Store operation in list
         self.operations.append(('split', [klattice]))
@@ -46,7 +47,26 @@ class NumericBraggInterferometer:
         # Apply operation to each node, update list of current nodes
         next_level = []
         for node in self.current_level:
-            node.split(klattice, distance=self.distance)
+            if filter_func is None:
+                node.split(klattice, distance=self.distance)
+            else:
+                node.split(klattice, distance=self.distance, filter_func=filter_func)
+            next_level += node.children
+        self.current_level = next_level
+
+    def transition(self, kmap):
+        """
+        Applies a transition operation to all nodes at the current level.
+
+        :param kmap: A dictionary where the keys are initial states and the values are the final states.
+        """
+        # Store operation in list
+        self.operations.append(('transition', []))
+
+        # Apply operation to each node, update list of current nodes
+        next_level = []
+        for node in self.current_level:
+            node.transition(kmap)
             next_level += node.children
         self.current_level = next_level
 
@@ -106,10 +126,10 @@ class NumericBraggInterferometer:
         Split and propagate functions are provided separately and interleaved automatically
         to match the operation sequence.
 
-        :param split_funcs: A list of functions, one per split operation. Each takes :code:`(*comm_args, k_init, k_final, klattice, t, x)`.
-        :param propagate_func: A single function used for all propagation steps. Takes :code:`(*comm_args, t, k)`.
+        :param split_funcs: A list of functions, one per split operation. Each takes :code:`(*comm_args, k_init, k_final, klattice, t, x)`. Here :code:`t` is the time since the start of the interferometer.
+        :param propagate_func: A single function used for all propagation steps. Takes :code:`(*comm_args, t, k)`. Here :code:`t` is the duration of the propagation step.
         :param output_momentums: A list of output momentum values to compute populations for.
-        :param kvector_funcs: Optional. A list of functions, one per split operation. Each takes :code:`(*comm_args)` and returns a scalar wavevector shift :code:`dk`.
+        :param kvector_funcs: Optional. A list of functions, one per split operation. Each takes :code:`(*comm_args, k_init, k_final, klattice, t, x)` and returns a scalar wavevector shift :code:`dk`. Here :code:`t` is the time since the start of the interferometer.
         :param func_pop_init: Optional. A function that initializes the population accumulator. Takes :code:`(*comm_args)`. Defaults to :code:`np.zeros_like(comm_args[0])`.
         :param func_wf_init: Optional. A function that initializes the wavefunction amplitude. Takes :code:`(*comm_args)`. Defaults to :code:`np.ones_like(comm_args[0])`.
         :param func_wf2_init: Optional. A function that initializes the wavefunction accumulator. Takes :code:`(*comm_args)`. Defaults to :code:`np.zeros_like(comm_args[0])`.
@@ -146,12 +166,11 @@ class NumericBraggInterferometer:
             for i, kvf in enumerate(kvector_funcs):
                 kv_count = self._param_count(kvf)
                 if kv_count is not None and known_split_counts:
-                    expected_kv = known_split_counts[0] - 5
+                    expected_kv = known_split_counts[0]
                     if kv_count != expected_kv:
                         raise ValueError(
                             f'kvector_funcs[{i}] takes {kv_count} parameters, expected '
-                            f'{expected_kv} (split functions take {known_split_counts[0]}, '
-                            f'kvector should take 5 fewer)')
+                            f'{expected_kv} (same as split functions)')
 
         # Build interleaved operation_funcs list, bundling kvector_funcs with split_funcs
         operation_funcs = []
@@ -163,6 +182,8 @@ class NumericBraggInterferometer:
                 split_idx += 1
             elif op_type == 'propagate':
                 operation_funcs.append((propagate_func, None))
+            elif op_type == 'transition':
+                operation_funcs.append((None, None))
 
         self.operation_funcs = operation_funcs
 
@@ -268,6 +289,15 @@ class NumericTreeNode:
         for k in np.unique(valid_kvec):
             if k in self.ifr.kvec and filter_func(self.ifr.kvec, self.k, k):
                 self.children.append(NumericTreeNode(self.ifr, x=self.x, t=self.t, k=k, parent=self))
+
+    def transition(self, kmap):
+        """
+        Transitions the node, creating child nodes for the transitioned states. Assumes a one-to-one mapping from initial to final states.
+
+        :param kmap: A dictionary where the keys are initial states and the values are the final states.
+        """
+        if self.k in kmap:
+            self.children.append(NumericTreeNode(self.ifr, x=self.x, t=self.t, k=kmap[self.k], parent=self))
 
     def propagate(self, T):
         """
@@ -376,6 +406,10 @@ class NumericTreeNode:
                 # Construct function call and store
                 func_calls.append(('split', op_func, [k_init, k_final, klattice, t, x], delta_k, kvfunc))
 
+            elif op_type == 'transition':
+                # Transitions currently carry no phase or amplitude factor.
+                func_calls.append(('transition', None, None, None, None))
+
         # Construct function that computes the wavefunction from each function call
         def calc_wf(comm_args):
             wf = func_init(*comm_args)
@@ -383,15 +417,17 @@ class NumericTreeNode:
             for func_call in func_calls:
                 op_type, func, args, delta_k, kvector_func = func_call
                 if op_type == 'split':
-                    if kvector_func is not None:
-                        dk = kvector_func(*comm_args)
-                        k_extra += delta_k * dk
                     args2 = comm_args + args
+                    if kvector_func is not None:
+                        dk = kvector_func(*args2)
+                        k_extra += delta_k * dk
                     wf *= func(*args2)
                 elif op_type == 'propagate':
                     t, k = args
                     args2 = comm_args + [t, k + k_extra]
                     wf *= func(*args2)
+                elif op_type == 'transition':
+                    pass
             return wf
 
         # Return
