@@ -2,6 +2,14 @@
 
 A package for exploring matterwave interferometer geometries and for numerically solving the Bloch Hamiltonian that describes Bragg diffraction and Bloch oscillations.
 
+## Installation
+
+Install via
+
+```bash
+pip install git+https://github.com/jc-roth/mwave@v3.1.0
+```
+
 ## Documentation
 
 Located on readthedocs [here](https://mwave.readthedocs.io/latest/quickstart.html).
